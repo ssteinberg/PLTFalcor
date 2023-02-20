@@ -59,13 +59,13 @@ extension MaterialSystem
         This may involve sampling textures, executing procedural functions, etc.
         \param[in] sd Shading data.
         \param[in] lod Method for computing texture level-of-detail, must implement the `ITextureSampler` interface.
-        \param[in] hints Optional hints to control the behavior of the material instance. Combination of `MaterialInstanceHints` flags.
         \return A material instance.
     */
-    IMaterialInstance getMaterialInstance<L:ITextureSampler>(const ShadingData sd, L lod, const uint hints = (uint)MaterialInstanceHints::None)
-    {        
+
+    IMaterialInstance getMaterialInstance<L:ITextureSampler>(const ShadingData sd, L lod)
+    {
         let material = getMaterial(sd.materialID);
-        return material.setupMaterialInstance(this, sd, lod, hints);
+        return material.setupMaterialInstance(this, sd, lod);
     }
 
     /** Prepares shading data at a hit point.

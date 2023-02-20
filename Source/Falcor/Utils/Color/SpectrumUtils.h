@@ -33,6 +33,7 @@
 #include "Utils/Color/ColorUtils.h"
 #include <algorithm>
 #include <functional>
+#include <fstd/span.h> // TODO C++20: Replace with <span>
 #include <type_traits>
 
 namespace Falcor
@@ -74,7 +75,7 @@ namespace Falcor
             \return XYZ of the spectrum.
         */
         template<typename T, typename ReturnType>
-        static ReturnType integrate(SampledSpectrum<T>& spectrum, const SpectrumInterpolation interpolationType, std::function<ReturnType(float)> func, const uint32_t componentIndex = 0, const uint32_t integrationSteps = 1)
+        static ReturnType integrate(const SampledSpectrum<T>& spectrum, const SpectrumInterpolation interpolationType, std::function<ReturnType(float)> func, const uint32_t componentIndex = 0, const uint32_t integrationSteps = 1)
         {
             FALCOR_ASSERT(integrationSteps >= 1);
             float2 wavelengthRange = spectrum.getWavelengthRange();
@@ -109,7 +110,7 @@ namespace Falcor
             \return XYZ of the spectrum.
         */
         template<typename T>
-        static float3 toXYZ(SampledSpectrum<T>& spectrum, const SpectrumInterpolation interpolationType = SpectrumInterpolation::Linear, const uint32_t componentIndex = 0, const uint32_t integrationSteps = 1)
+        static float3 toXYZ(const SampledSpectrum<T>& spectrum, const SpectrumInterpolation interpolationType = SpectrumInterpolation::Linear, const uint32_t componentIndex = 0, const uint32_t integrationSteps = 1)
         {
             return integrate<T, float3>(spectrum, interpolationType,
                 [](float wavelength) -> float3 { return SpectrumUtils::wavelengthToXYZ_CIE1931(wavelength); },
@@ -124,7 +125,7 @@ namespace Falcor
             \return XYZ of the spectrum times D65.
         */
         template<typename T>
-        static float3 toXYZ_D65(SampledSpectrum<T>& spectrum, const SpectrumInterpolation interpolationType = SpectrumInterpolation::Linear, const uint32_t componentIndex = 0, const uint32_t integrationSteps = 1)
+        static float3 toXYZ_D65(const SampledSpectrum<T>& spectrum, const SpectrumInterpolation interpolationType = SpectrumInterpolation::Linear, const uint32_t componentIndex = 0, const uint32_t integrationSteps = 1)
         {
             return integrate<T,float3>(spectrum, interpolationType,
                 [](float wavelength) -> float3 { return SpectrumUtils::wavelengthToXYZ_CIE1931(wavelength) * SpectrumUtils::wavelengthToD65(wavelength); },
@@ -139,7 +140,7 @@ namespace Falcor
             \return An RGB color.
         */
         template<typename T>
-        static float3 toRGB_D65(SampledSpectrum<T>& spectrum, const SpectrumInterpolation interpolationType, const uint32_t componentIndex = 0, const uint32_t integrationSteps = 1)
+        static float3 toRGB_D65(const SampledSpectrum<T>& spectrum, const SpectrumInterpolation interpolationType = SpectrumInterpolation::Linear, const uint32_t componentIndex = 0, const uint32_t integrationSteps = 1)
         {
             // Equation 8 from "An OpenEXR Layout for Spectral Images", JCGT.
             // https://jcgt.org/published/0010/03/01/
@@ -147,6 +148,72 @@ namespace Falcor
             float3 RGB = XYZtoRGB_Rec709(XYZ);
             const float Y_D65 = 10567.0762f;    // Computed as Y_D65 = SpectrumUtils::sD65_5nm.toXYZ(1.0f).y; See Equation 8 in the paper above.
             return RGB * (1.0f / Y_D65);
+        }
+
+        template<typename T>
+        static SampledSpectrum<T> rgbToSpectrum(const float3& rgb, const std::size_t samples=16)
+        {
+            const float white_sd[11] = { 1.0000f, 1.0000f, 0.9999f, 0.9993f, 0.9992f, 0.9998f, 1.0000f, 1.0000f, 1.0000f, 1.0000f, 0.0f };
+            const float cyan_sd[11] = { 0.9710f, 0.9426f, 1.0007f, 1.0007f, 1.0007f, 1.0007f, 0.1564f, 0.0000f, 0.0000f, 0.0000f, 0.0f };
+            const float magenta_sd[11] = { 1.0000f, 1.0000f, 0.968f,  0.22295f, 0.0000f, 0.0458f, 0.8369f, 1.0000f, 1.0000f, 0.9959f, 0.0f };
+            const float yellow_sd[11] = { 0.0001f, 0.0000f, 0.1088f, 0.6651f, 1.0000f, 1.0000f, 0.9996f, 0.9586f, 0.9685f, 0.9840f, 0.0f };
+            const float red_sd[11] = { 0.1012f, 0.0515f, 0.0000f, 0.0000f, 0.0000f, 0.0000f, 0.8325f, 1.0149f, 1.0149f, 1.014f, 0.0f };
+            const float green_sd[11] = { 0.0000f, 0.0000f, 0.0273f, 0.7937f, 1.0000f, 0.9418f, 0.1719f, 0.0000f, 0.0000f, 0.0025f, 0.0f };
+            const float blue_sd[11] = { 1.0000f, 1.0000f, 0.8916f, 0.3323f, 0.0000f, 0.0000f, 0.0003f, 0.0369f, 0.0483f, 0.0496f, 0.0f };
+
+            std::vector<T> wv, sd;
+            sd.resize(samples, .0f);
+
+            for (std::size_t i = 0; i < samples; ++i)
+            {
+                const auto w = SpectrumConstants::minWavelength + (SpectrumConstants::maxWavelength-SpectrumConstants::minWavelength)/float(samples-1)*i;
+                const int b = std::min(10,std::max(0,int((w - SpectrumConstants::minWavelength) / (SpectrumConstants::maxWavelength - SpectrumConstants::minWavelength) * 10.f)));
+
+                if (rgb.r <= rgb.g && rgb.r <= rgb.b)
+                {
+                    sd[i] += white_sd[b] * rgb.r;
+                    if (rgb.g <= rgb.b)
+                    {
+                        sd[i] += cyan_sd[b] * (rgb.g - rgb.r);
+                        sd[i] += blue_sd[b] * (rgb.b - rgb.g);
+                    }
+                    else
+                    {
+                        sd[i] += cyan_sd[b] * (rgb.b - rgb.r);
+                        sd[i] += green_sd[b] * (rgb.g - rgb.b);
+                    }
+                }
+                else if (rgb.g <= rgb.r && rgb.g <= rgb.b)
+                {
+                    sd[i] += white_sd[b] * rgb.g;
+                    if (rgb.r <= rgb.b)
+                    {
+                        sd[i] += magenta_sd[b] * (rgb.r - rgb.g);
+                        sd[i] += blue_sd[b] * (rgb.b - rgb.r);
+                    }
+                    else
+                    {
+                        sd[i] += magenta_sd[b] * (rgb.b - rgb.g);
+                        sd[i] += red_sd[b] * (rgb.r - rgb.b);
+                    }
+                }
+                else
+                {
+                    sd[i] += white_sd[b] * rgb.b;
+                    if (rgb.r <= rgb.g)
+                    {
+                        sd[i] += yellow_sd[b] * (rgb.r - rgb.b);
+                        sd[i] += green_sd[b] * (rgb.g - rgb.r);
+                    }
+                    else
+                    {
+                        sd[i] += yellow_sd[b] * (rgb.g - rgb.b);
+                        sd[i] += red_sd[b] * (rgb.r - rgb.g);
+                    }
+                }
+            }
+
+            return SampledSpectrum<T>{ SpectrumConstants::minWavelength,SpectrumConstants::maxWavelength,sd.size(),sd.data() };
         }
     };
 }

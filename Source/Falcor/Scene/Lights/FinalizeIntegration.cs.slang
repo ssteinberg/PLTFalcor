@@ -61,7 +61,7 @@ void finalizeIntegration(uint3 DTid : SV_DispatchThreadID)
     // TODO: Generalize light collection to support arbitrary materials (#1314).
     const EmissiveTriangle tri = gTriangleData[triIdx].unpack();
     const BasicMaterialData materialData = gScene.materials.getBasicMaterialData(tri.materialID);
-    float3 averageEmissiveColor = materialData.emissive;
+    float3 averageEmissiveColor = max(float3(0), gScene.evalSpectrumRGB(materialData.emissionSpectralId));
 
     if (gScene.materials.isEmissiveTextured(tri.materialID))
     {
@@ -100,7 +100,7 @@ void finalizeIntegration(uint3 DTid : SV_DispatchThreadID)
             averageEmissiveColor /= 3.f;
         }
     }
-    float3 averageRadiance = averageEmissiveColor * materialData.emissiveFactor;
+    float3 averageRadiance = averageEmissiveColor;
 
     // Pre-compute the luminous flux emitted, which is what we use during sampling to set probabilities.
     // We assume diffuse emitters and integrate per side (hemisphere) => the scale factor is pi.

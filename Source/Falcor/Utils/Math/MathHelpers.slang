@@ -192,11 +192,11 @@ float3 oct_to_ndir_unorm(float2 p)
     return oct_to_ndir_snorm(p * 2.f - 1.f);
 }
 
-/** Converts normalized direction to the octahedral map (equal-area, unsigned normalized).
+/** Converts normalized direction to the octahedral map (equal-area).
     \param[in] n Normalized direction.
-    \return Position in octahedral map in [0,1] for each component.
+    \return Position in octahedral map for each component.
 */
-float2 ndir_to_oct_equal_area_unorm(float3 n)
+float2 ndir_to_oct_equal_area_snorm(float3 n)
 {
     // Use atan2 to avoid explicit div-by-zero check in atan(y/x).
     float r = sqrt(1.f - abs(n.z));
@@ -209,19 +209,19 @@ float2 ndir_to_oct_equal_area_unorm(float3 n)
 
     // Reflect p over the diagonals, and move to the correct quadrant.
     if (n.z < 0.f) p = 1.f - p.yx;
-    p *= sign(n.xy);
-
-    return p * 0.5f + 0.5f;
+    return p * sign(n.xy);
+}
+float2 ndir_to_oct_equal_area_unorm(float3 n)
+{
+    return ndir_to_oct_equal_area_snorm(n) * 0.5f + 0.5f;
 }
 
-/** Converts point in the octahedral map to normalized direction (equal area, unsigned normalized).
-    \param[in] p Position in octahedral map in [0,1] for each component.
+/** Converts point in the octahedral map to normalized direction (equal area).
+    \param[in] p Position in octahedral map for each component.
     \return Normalized direction.
 */
-float3 oct_to_ndir_equal_area_unorm(float2 p)
+float3 oct_to_ndir_equal_area_snorm(float2 p)
 {
-    p = p * 2.f - 1.f;
-
     // Compute radius r without branching. The radius r=0 at +z (center) and at -z (corners).
     float d = 1.f - (abs(p.x) + abs(p.y));
     float r = 1.f - abs(d);
@@ -237,6 +237,9 @@ float3 oct_to_ndir_equal_area_unorm(float2 p)
     float z = sign(d) * (1.f - r*r);
 
     return float3(x, y, z);
+}
+float3 oct_to_ndir_equal_area_unorm(float2 p) {
+    return oct_to_ndir_equal_area_snorm(p * 2.f - 1.f);
 }
 
 /******************************************************************************
@@ -329,6 +332,10 @@ float3 sample_cosine_hemisphere_concentric(float2 u, out float pdf)
     pdf = z * M_1_PI;
     return float3(d, z);
 }
+float cosine_hemisphere_concentric_pdf(float3 wo)
+{
+    return wo.z * M_1_PI;
+}
 
 /** Cosine-weighted sampling of the hemisphere using a polar coordinates.
     \param[in] u Uniform random numbers in [0,1)^2.
@@ -369,6 +376,78 @@ float3 sample_triangle(float2 u)
     return float3(1.f - b.x - b.y, b.x, b.y);
 }
 
+float normalCdf(float x)
+{
+    const float g2 = -0.0150234f;
+    const float g4 =  0.000666099f;
+    const float g6 =  5.07937e-6f;
+    const float x2 = sqr(x);
+    const float x4 = sqr(x2);
+    const float x6 = x2*x4;
+    return .5f + sign(x)/2.f * sqrt(1 - exp(-2 * M_1_PI * x2 * (1+g2*x2+g4*x4+g6*x6)));
+}
+float _normalInvCDF_RA(float t)
+{
+    return t - ((0.010328f * t + 0.802853f) * t + 2.515517f)
+             / (1.f + ((0.001308f * t + 0.189269f) * t + 1.432788f) * t);
+}
+float normalInvCDF(float x)
+{
+    // Abramowitz and Stegun 26.2.23.
+    if (x<=0) return -1.f/.0f;
+    if (x>=1) return  1.f/.0f;
+    if (x<.5) return -_normalInvCDF_RA(sqrt(-2.f*log(x)));
+    else      return  _normalInvCDF_RA(sqrt(-2.f*log(1.f-x)));
+}
+
+// Typical Box-Mueller transform: Samples a pair of independent normal variates
+float2 sample_boxmueller(float2 sample)
+{
+    float r = sqrt(-2 * log(sample.x));
+    float p = 2 * float(M_PI) * sample.y;
+    return r * float2(sin(p),cos(p));
+}
+float boxmueller_pdf(float2 wo)
+{
+    return M_1_2PI * exp(-.5f * dot(wo,wo));
+}
+
+// Truncated Box-Mueller transform
+float2 sample_boxmueller_truncated(float2 sample, float2 mean, float sigma2, out float pdf)
+{
+    const float l = sqrt(min(1.f,dot(mean,mean)));
+    const float coso = sqrt(max(.0f,1-dot(mean,mean)));
+    const float phi_i = mean.x!=.0f || mean.y!=.0f ? atan2(mean.y,mean.x) : .0f;
+
+    const float s = exp(-.5f*sqr(1+l)/sigma2);
+    const float x = (1.f-s)*max(FLT_EPSILON,sample.x)+s;
+    const float r = sqrt(-2 * sigma2 * log(x));
+
+    const float max_phi = r<FLT_EPSILON||l<FLT_EPSILON ? M_PI :
+                          acos(clamp((sqr(r)+sqr(l)-1)/(2.f*r*l),-1.f,1.f));
+
+    const float phi = phi_i + M_PI + max_phi*(2.f*sample.y-1.f);
+    const float2 p  = r*float2(cos(phi),sin(phi));
+    pdf = .5f * x/(max_phi*sigma2) * coso;
+
+    return p + mean;
+}
+float boxmueller_truncated_pdf(float2 wo, float2 mean, float sigma2)
+{
+    const float l = sqrt(min(1.f,dot(mean,mean)));
+    const float coso = sqrt(max(.0f,1-dot(mean,mean)));
+
+    wo -= mean;
+    const float r2 = dot(wo,wo);
+    const float x  = exp(-.5f * r2/sigma2);
+
+    const float r  = sqrt(r2);
+    const float max_phi = r<FLT_EPSILON||l<FLT_EPSILON ? M_PI :
+                          acos(clamp((sqr(r)+sqr(l)-1)/(2.f*r*l),-1.f,1.f));
+
+    return .5f * x/(max_phi*sigma2) * coso;
+}
+
 /******************************************************************************
 
     Motion vectors
@@ -402,6 +481,43 @@ float2 calcMotionVector(float2 pixelCrd, float4 prevPosH, float2 renderTargetDim
 
 /** Inverts a 2x2 matrix.
 */
+bool tryInvert(const float2x2 M, out float2x2 inv)
+{
+    float det = determinant(M);
+    if (abs(det)<4e-6)
+        return false;
+
+    float invdet = 1.0f / det;
+    inv[0][0] = M[1][1] * invdet;
+    inv[1][1] = M[0][0] * invdet;
+    inv[0][1] = -M[0][1] * invdet;
+    inv[1][0] = -M[1][0] * invdet;
+    return true;
+}
+
+/** Inverts a 3x3 matrix.
+*/
+bool tryInvert(const float3x3 M, out float3x3 inv)
+{
+    float det = determinant(M);
+    if (abs(det)<4e-6)
+        return false;
+
+    float invdet = 1.0f / det;
+    inv[0][0] = (M[1][1] * M[2][2] - M[2][1] * M[1][2]) * invdet;
+    inv[0][1] = (M[0][2] * M[2][1] - M[0][1] * M[2][2]) * invdet;
+    inv[0][2] = (M[0][1] * M[1][2] - M[0][2] * M[1][1]) * invdet;
+    inv[1][0] = (M[1][2] * M[2][0] - M[1][0] * M[2][2]) * invdet;
+    inv[1][1] = (M[0][0] * M[2][2] - M[0][2] * M[2][0]) * invdet;
+    inv[1][2] = (M[1][0] * M[0][2] - M[0][0] * M[1][2]) * invdet;
+    inv[2][0] = (M[1][0] * M[2][1] - M[2][0] * M[1][1]) * invdet;
+    inv[2][1] = (M[2][0] * M[0][1] - M[0][0] * M[2][1]) * invdet;
+    inv[2][2] = (M[0][0] * M[1][1] - M[1][0] * M[0][1]) * invdet;
+    return true;
+}
+
+/** Inverts a 2x2 matrix.
+*/
 float2x2 inverse(float2x2 M)
 {
     float2x2 inv;
@@ -411,17 +527,6 @@ float2x2 inverse(float2x2 M)
     inv[0][1] = -M[0][1] * invdet;
     inv[1][0] = -M[1][0] * invdet;
     return inv;
-}
-
-/** Inverts a 2x3 matrix.
-*/
-float2x3 inverse(float2x3 M)
-{
-    float2x2 N = float2x2(M._m00, M._m01, M._m10, M._m11);
-    float2x2 Ni = inverse(N);
-    float2 t = -mul(Ni, float2(M._m02, M._m12));
-    float2x3 Mi = float2x3(Ni._m00, Ni._m01, t.x, Ni._m10, Ni._m11, t.y);
-    return Mi;
 }
 
 /** Inverts a 3x3 matrix.
@@ -440,6 +545,60 @@ float3x3 inverse(float3x3 M)
     inv[2][1] = (M[2][0] * M[0][1] - M[0][0] * M[2][1]) * invdet;
     inv[2][2] = (M[0][0] * M[1][1] - M[1][0] * M[0][1]) * invdet;
     return inv;
+}
+
+float2x2 diag2(float a1, float a2) {
+    float2x2 m = { };
+    m[0][0] = a1;
+    m[1][1] = a2;
+    return m;
+}
+float3x3 diag3(float a1, float a2, float a3) {
+    float3x3 m = { };
+    m[0][0] = a1;
+    m[1][1] = a2;
+    m[2][2] = a3;
+    return m;
+}
+float4x4 diag4(float a1, float a2, float a3, float a4) {
+    float4x4 m = { };
+    m[0][0] = a1;
+    m[1][1] = a2;
+    m[2][2] = a3;
+    m[3][3] = a4;
+    return m;
+}
+float2x2 ident2(float d=1.f) {
+    return diag2(d,d);
+}
+float3x3 ident3(float d=1.f) {
+    return diag3(d,d,d);
+}
+float4x4 ident4(float d=1.f) {
+    return diag4(d,d,d,d);
+}
+
+// Singular value decomposition for a symmetric matrix
+// A = U.Sigma.U^T
+void svd_symmetric(const float2x2 A, out float2x2 U, out float2x2 Sigma) {
+    const float a = A[0][0];
+    const float b = A[1][0];
+    const float c = A[0][1];
+    const float d = A[1][1];
+    const float a2 = sqr(a);
+    const float b2 = sqr(b);
+    const float c2 = sqr(c);
+    const float d2 = sqr(d);
+
+    const float y = 2*a*c + 2*b*d;
+    const float x = a2 + b2 - c2 - d2;
+    const float theta = x!=.0f||y!=.0f ? .5f*atan2(y, x) : .0f;
+
+    const float s1 = a2 + b2 + c2 + d2;
+    const float s2 = sqrt(sqr(x) + sqr(y));
+
+    U = float2x2(cos(theta),-sin(theta),sin(theta),cos(theta));
+    Sigma = float2x2(sqrt((s1+s2)/2.f),0,0,sqrt((s1-s2)/2.f));
 }
 
 /** Generate a vector that is orthogonal to the input vector.
@@ -462,12 +621,14 @@ float3 perp_stark(float3 u)
 }
 
 float  sqr(float  v) { return v*v; }
-
+float1 sqr(float1 v) { return v*v; }
 float2 sqr(float2 v) { return v*v; }
-
 float3 sqr(float3 v) { return v*v; }
-
 float4 sqr(float4 v) { return v*v; }
+float norm2(float2 v) { return dot(v,v); }
+float norm2(float3 v) { return dot(v,v); }
+float norm2(float4 v) { return dot(v,v); }
+
 
 /** Error function.
 */
@@ -640,3 +801,85 @@ float3 rotate_z(const float3 v, const float angle)
     sincos(angle, s, c);
     return float3(v.x * c - v.y * s, v.x * s + v.y * c, v.z);
 }
+
+
+
+// The Gosper approximation to the Gamma function for x>0
+float Gamma(float x) {
+    x=x-1;
+    return sqrt(M_PI*(2*x+1.f/3.f)) * pow(x,x) * exp(-x);
+}
+// Exact tabulated values for n<13. Gamma function above can be used for large or real n.
+uint factorial(uint n) {
+    static const uint table[13] = { 1,1,2,6,24,120,720,5040,40320,362880,3628800,39916800,479001600 };
+    if (n<13)
+        return table[n];
+    return 0;
+}
+
+
+// Complex thingies
+float2 c_t(float real, float imag=.0f) { return float2(real,imag); }
+float cnorm2(float2 z) { return dot(z,z); }
+float cabs(float2 z) { return sqrt(cnorm2(z)); }
+float2 csqrt(float2 z) {
+    const float r = cabs(z);
+    const float a = sqrt(max(.0f,r+z.x)/2.f);
+    const float b = sqrt(max(.0f,r-z.x)/2.f);
+    return c_t(a, sign(z.y)*b);
+}
+float2 cconj(float2 z) { return c_t(z.x,-z.y); }
+float creal(float2 z) { return z.x; }
+float cimag(float2 z) { return z.y; }
+float2 cmul(float2 z1, float2 z2) { return c_t(z1.x*z2.x-z1.y*z2.y, z1.x*z2.y+z1.y*z2.x); }
+float2 cdiv(float2 z1, float2 z2) { return cmul(z1,cconj(z2))/cnorm2(z2); }
+float2 csqr(float2 z) { return cmul(z,z); }
+float carg(float2 z) { return atan2(z.y,z.x); }
+
+
+float  sinc(float x)  { return sin(x)/x; }
+float2 sinc(float2 x) { return sin(x)/x; }
+float3 sinc(float3 x) { return sin(x)/x; }
+float4 sinc(float4 x) { return sin(x)/x; }
+
+
+
+// Bessel functions of the first kind, of order nu
+
+// This is a good rational approximation for non-negative integer orders, where roughly |x|<nu. Not supported for |nu|>=7.
+// ! Numerically unstable for large x.
+float BesselJ_saa(int nu, float x) {
+    if (nu>=7)
+        return .0f/.0f;
+
+    const float x2 = sqr(x);
+    const float x4 = sqr(x2);
+    const float x6 = x2*x4;
+    const float x8 = sqr(x4);
+
+    const float s = 6.f * pow(x/2.f, (float)nu);
+    const float a = 1.f / (6.f * factorial(nu));
+    const float b = -x2 / (24.f * factorial(nu+1));
+    const float c1 = 11.f * x8 - 864.f * (6 + nu) * (x6 - 12.f * (5.f + nu) * (3.f * x4 + 32.f * (4 + nu) * (-2.f * x2 + 27.f * (3 + nu))));
+    const float c = c1/float(factorial(6+nu))*x4 * 5.652695401144601e-10f;
+
+    return s * (a+b+c);
+}
+// This is a good approximation for x>>|nu|
+float BesselJ_laa(int nu, float x) {
+    return sqrt(2.f/M_PI/x) * cos(x - nu*M_PI/2.f - M_PI/4.f);
+}
+// Interpolate between the two
+float BesselJ(int nu, float x) {
+    const float t = nu>0||(-nu)%2==0?1.f:-1.f;
+    nu = abs(nu);
+
+    float cutoff = float(nu)+1.f;
+    float interp = cutoff/10.f;
+    float laa = BesselJ_laa(nu, x);
+    float saa = BesselJ_saa(nu, x);
+    return nu>=7 || abs(x)>=cutoff+interp ?
+        laa * t :
+        lerp(saa,laa,max(.0f,min(1.f,.5f*(x-cutoff-interp)/interp))) * t;
+}
+

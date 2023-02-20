@@ -30,12 +30,20 @@
 #include "Core/Errors.h"
 #include <fstd/span.h> // TODO C++20: Replace with <span>
 #include <unordered_map>
+#include <Utils/Color/SpectrumUtils.h>
+#include <fstream>
 
 namespace Falcor
 {
     // ------------------------------------------------------------------------
     // PiecewiseLinearSpectrum
     // ------------------------------------------------------------------------
+
+    PiecewiseLinearSpectrum::PiecewiseLinearSpectrum(float uniform)
+        : mWavelengths({ SpectrumConstants::minWavelength,SpectrumConstants::maxWavelength })
+        , mValues({ uniform, uniform })
+        , mMaxValue(uniform)
+    {}
 
     PiecewiseLinearSpectrum::PiecewiseLinearSpectrum(fstd::span<const float> wavelengths, fstd::span<const float> values)
         : mWavelengths(wavelengths.begin(), wavelengths.end())
@@ -70,9 +78,37 @@ namespace Falcor
         return spec;
     }
 
-    std::optional<PiecewiseLinearSpectrum> PiecewiseLinearSpectrum::fromFile(const std::filesystem::path& path)
+    inline std::string trim(const std::string& str) {
+        std::string::size_type
+            start = str.find_first_not_of(" \t\r\n"),
+            end = str.find_last_not_of(" \t\r\n");
+
+        return str.substr(start == std::string::npos ? 0 : start,
+                end == std::string::npos ? str.length() - 1 : end - start + 1);
+    }
+    PiecewiseLinearSpectrum PiecewiseLinearSpectrum::fromFile(const std::filesystem::path& path)
     {
-        FALCOR_UNIMPLEMENTED();
+        std::ifstream is(path);
+        if (is.bad() || is.fail())
+            throw RuntimeError("Path could not be read '{}'.", path.string());
+
+        std::string line;
+        std::vector<float> wvs, vals;
+        while (true) {
+            if (!std::getline(is, line))
+                break;
+            line = trim(line);
+            if (line.length() == 0 || line[0] == '#')
+                continue;
+            std::istringstream iss(line);
+            float lambda, value;
+            if (!(iss >> lambda >> value))
+                break;
+            wvs.push_back(lambda);
+            vals.push_back(value);
+        }
+
+        return PiecewiseLinearSpectrum{ wvs, vals };
     }
 
     void PiecewiseLinearSpectrum::scale(float factor)
@@ -89,14 +125,14 @@ namespace Falcor
     float blackbodyEmission(float wavelength, float temperature)
     {
         if (temperature <= 0.f) return 0.f;
-        const float c = 299792458.f;
-        const float h = 6.62606957e-34f;
-        const float kb = 1.3806488e-23f;
+        static constexpr double c = 299792458.;
+        static constexpr double h = 6.62606957e-34;
+        static constexpr double kb = 1.3806488e-23;
         // Return emitted radiance for blackbody at wavelength lambda.
-        float l = wavelength * 1e-9f;
-        float Le = (2.f * h * c * c) / ((l * l * l * l * l) * (std::exp((h * c) / (l * kb * temperature)) - 1.f));
+        const auto l = wavelength * 1e-9;
+        const auto Le = (2. * h * c * c) / ((l * l * l * l * l) * (std::exp((h * c) / (l * kb * temperature)) - 1.) * 1e9);
         FALCOR_ASSERT(!std::isnan(Le));
-        return Le;
+        return float(Le);
     }
 
     BlackbodySpectrum::BlackbodySpectrum(float temperature, bool normalize)

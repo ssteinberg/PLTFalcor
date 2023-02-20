@@ -42,6 +42,8 @@
 
 namespace Falcor
 {
+    class Scene;
+
     /** This class represents a material system.
 
         It holds a collection of materials and their associated resources.
@@ -79,7 +81,7 @@ namespace Falcor
 
         /** Render the UI.
         */
-        void renderUI(Gui::Widgets& widget);
+        void renderUI(Gui::Widgets& widget, const Scene *scene);
 
         /** Update material system. This prepares all resources for rendering.
         */

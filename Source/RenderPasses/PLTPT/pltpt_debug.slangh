@@ -1,0 +1,51 @@
+
+#pragma once
+
+#include "Utils/Math/MathConstants.slangh"
+
+#include "pltpt_constants.slangh"
+#include "DebugViewType.slangh"
+
+import Utils.HWSS;
+
+import Path;
+import Rendering.PLT;
+
+
+
+/** Debug output
+ */
+
+#if DO_DEBUG_VIEW==1
+void writeDebugOutput(DebugViewType type, inout PLTSolve solveData, const float3 val) {
+    if (DebugViewType(kDebugViewType) == type && all(isfinite(val)))
+        solveData.debugOutput += float4(val,1.f);
+}
+void writeDebugOutputCC(DebugViewType type, inout PLTSolve solveData, const float val) {
+    return writeDebugOutput(type, solveData, ccInferno(val));
+}
+void writeDebugOutputCC2(DebugViewType type, inout PLTSolve solveData, const float val) {
+    return writeDebugOutput(type, solveData, ccMagma(val));
+}
+
+void markDebug(inout PLTSolve solveData, const int bounceIdx, const PLTBeam beam) {
+    const float k = M_2PI / (1e-3f * beam.wavelengths.x);
+
+    // Mark nans and infs
+    if (any(isnan(solveData.Lrgb)))
+        writeDebugOutput(DebugViewType::nans, solveData, float3(5,0,3));
+    if (any(isinf(solveData.Lrgb)))
+        writeDebugOutput(DebugViewType::inf, solveData, float3(2,0,5));
+
+    writeDebugOutputCC2(DebugViewType::path_length, solveData, bounceIdx/float(mMaxBounces-1));
+    writeDebugOutputCC2(DebugViewType::hwss_comps, solveData, beam.hwss_comps/float(hwss_samples));
+
+    // Polarization
+    const float4 S  = float4(beam.L[0], beam.L1[0], beam.L2[0], beam.L3[0]);
+    const float cp  = sqrt(sqr(S.w)) / S.x;
+    const float lp  = sqrt(sqr(S.y)+sqr(S.z)) / S.x;
+    const float lpd = .5f*atan2(S.z,S.y);
+    writeDebugOutput(DebugViewType::polarization, solveData,
+        lp*float3(sqr(cos(lpd)),0,sqr(sin(lpd))) + cp*float3(0,1,0));
+}
+#endif

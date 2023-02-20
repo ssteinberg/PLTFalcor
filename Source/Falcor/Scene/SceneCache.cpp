@@ -27,8 +27,6 @@
  **************************************************************************/
 #include "SceneCache.h"
 #include "Material/StandardMaterial.h"
-#include "Material/HairMaterial.h"
-#include "Material/ClothMaterial.h"
 #include "Material/MaterialTextureLoader.h"
 #include "Utils/Logger.h"
 
@@ -281,6 +279,10 @@ namespace Falcor
         stream.write((uint32_t)sceneData.lights.size());
         for (const auto& pLight : sceneData.lights) writeLight(stream, pLight);
 
+        writeMarker(stream, "SpectralProfiles");
+        stream.write((uint32_t)sceneData.spectralProfiles.size());
+        for (const auto& SP : sceneData.spectralProfiles) writeSpectralProfile(stream, SP);
+
         writeMarker(stream, "Grids");
         stream.write((uint32_t)sceneData.grids.size());
         for (const auto& pGrid : sceneData.grids) writeGrid(stream, pGrid);
@@ -396,6 +398,10 @@ namespace Falcor
         readMarker(stream, "Lights");
         sceneData.lights.resize(stream.read<uint32_t>());
         for (auto& pLight : sceneData.lights) pLight = readLight(stream);
+
+        readMarker(stream, "SpectralProfiles");
+        sceneData.spectralProfiles.resize(stream.read<uint32_t>());
+        for (auto& SP : sceneData.spectralProfiles) SP = readSpectralProfile(stream);
 
         readMarker(stream, "Grids");
         sceneData.grids.resize(stream.read<uint32_t>());
@@ -647,6 +653,18 @@ namespace Falcor
         return pLight;
     }
 
+    void SceneCache::writeSpectralProfile(OutputStream& stream, const SpectralProfile& SP)
+    {
+        stream.write(&SP, sizeof(SpectralProfile));
+    }
+
+    SpectralProfile SceneCache::readSpectralProfile(InputStream& stream)
+    {
+        SpectralProfile ret;
+        stream.read(&ret, sizeof(SpectralProfile));
+        return ret;
+    }
+
     // Materials
 
     void SceneCache::writeMaterials(OutputStream& stream, const MaterialSystem::SharedPtr& pMaterials)
@@ -727,12 +745,6 @@ namespace Falcor
             {
             case MaterialType::Standard:
                 pMaterial = StandardMaterial::create(pDevice);
-                break;
-            case MaterialType::Hair:
-                pMaterial = HairMaterial::create(pDevice);
-                break;
-            case MaterialType::Cloth:
-                pMaterial = ClothMaterial::create(pDevice);
                 break;
             default:
                 throw RuntimeError("Unsupported material type");

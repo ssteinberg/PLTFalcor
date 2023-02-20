@@ -38,9 +38,40 @@
 #include "Utils/Math/MathConstants.slangh"
 
 import Scene.Scene;
+import Scene.Material.TextureSampler;
+import Scene.ShadingData;
 __exported import Scene.Lights.LightCollection;
+import Utils.HWSS;
 import Utils.Math.MathHelpers;
+import Utils.Color.SpectrumUtils;
 import Rendering.Lights.EmissiveLightSamplerInterface;
+
+/** Evaluates the outgoing radiance on a given material.
+    This function samples the emissive texture if its textured.
+    Note the caller check the facing status themselves to discard back-facing hits.
+    \param[in] materialID Material ID
+    \param[in] uv Texture coordinates
+    \return Evaluated outgoing radiance on the front-facing side.
+*/
+bool materialEvalEmissive<S: ISampleGenerator>(const uint materialID, const float2 uv, const float wavelength, bool importanceSampleSpectrum, inout S sg, out hwss_t Le, out hwss_t sampledWavelengths)
+{
+    // This function only handle basic materials for now. Other material types return zero.
+    // TODO: Generalize to support arbitrary materials (#1314).
+    if (gScene.materials.isBasicMaterial(materialID))
+    {
+        BasicMaterialData md = gScene.materials.getBasicMaterialData(materialID);
+        if (md.isEmissive())
+        {
+            SamplerState s = gScene.materials.getDefaultTextureSampler(materialID);
+            ExplicitLodTextureSampler lod = { 0.f };
+
+            const float3 emissionRGB = gScene.materials.sampleTexture(md.texEmissive, s, uv, float4(1.f), lod).rgb;
+            Le = gScene.sampleSpectrum(md.emissionSpectralId, wavelength, sg, importanceSampleSpectrum, sampledWavelengths);
+            Le *= SpectrumUtils.rgbToSpectrum(emissionRGB, sampledWavelengths);
+        }
+    }
+    return false;
+}
 
 /** Samples an emissive triangle uniformly by area and evaluates the probability density function.
     Note that the triangle is only emitting on the front-facing side.
@@ -51,13 +82,14 @@ import Rendering.Lights.EmissiveLightSamplerInterface;
     \param[out] ls Light sample. Only valid if true is returned.
     \return True if a sample was generated, false otherwise.
 */
-bool sampleTriangle(const float3 posW, const uint triangleIndex, const float2 u, out TriangleLightSample ls)
+bool sampleTriangle<S: ISampleGenerator>(const float3 posW, const uint triangleIndex, inout S sg, const float wavelength, bool importanceSampleSpectrum, out TriangleLightSample ls)
 {
     ls = {};
     ls.triangleIndex = triangleIndex;
     const EmissiveTriangle tri = gScene.lightCollection.getTriangle(triangleIndex);
 
     // Sample the triangle uniformly.
+    const float2 u = sampleNext2D(sg);
     const float3 barycentrics = sample_triangle(u);
     ls.posW = tri.getPosition(barycentrics);
 
@@ -76,16 +108,8 @@ bool sampleTriangle(const float3 posW, const uint triangleIndex, const float2 u,
 
     // Evaluate emitted radiance.
     float2 uv = tri.getTexCoord(barycentrics);
-    ls.Le = gScene.materials.evalEmissive(tri.materialID, uv);
-
-    // DEMO21: Evaluate light profile.
-    if (Scene::kUseLightProfile)
-    {
-        if (gScene.materials.getMaterialHeader(tri.materialID).isLightProfileEnabled())
-        {
-            ls.Le *= gScene.lightProfile.eval(dot(ls.normalW, -ls.dir));
-        }
-    }
+    ls.Le = .0f;
+    materialEvalEmissive(tri.materialID, uv, wavelength, importanceSampleSpectrum, sg, ls.Le, ls.wavelengths);
 
     // Compute probability density with respect to solid angle from the shading point.
     // The farther away the light is and the larger the angle it is at, the larger the pdf becomes. The probability goes to infinity in the limit.

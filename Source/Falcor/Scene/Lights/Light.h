@@ -30,8 +30,10 @@
 #include "Core/Macros.h"
 #include "Utils/Math/Vector.h"
 #include "Utils/Math/Matrix.h"
+#include "Utils/Color/SampledSpectrum.h"
 #include "Utils/UI/Gui.h"
 #include "Scene/Animation/Animatable.h"
+#include "Scene/Material/BasicMaterial.h"
 #include <memory>
 #include <string>
 
@@ -55,7 +57,7 @@ namespace Falcor
 
         /** Render UI elements for this light.
         */
-        virtual void renderUI(Gui::Widgets& widget);
+        virtual void renderUI(Gui::Widgets& widget, const Scene *scene);
 
         /** Get total light power
         */
@@ -91,11 +93,7 @@ namespace Falcor
 
         /** Set the light intensity.
         */
-        virtual void setIntensity(const float3& intensity);
-
-        /** Get the light intensity.
-        */
-        const float3& getIntensity() const { return mData.intensity; }
+        void setIntensity(SpectralProfileID, SpectralProfile profile);
 
         enum class Changes
         {
@@ -122,19 +120,12 @@ namespace Falcor
 
         static const size_t kDataSize = sizeof(LightData);
 
-        // UI callbacks for keeping the intensity in-sync.
-        float3 getColorForUI();
-        void setColorFromUI(const float3& uiColor);
-        float getIntensityForUI();
-        void setIntensityFromUI(float intensity);
-
         std::string mName;
         bool mActive = true;
         bool mActiveChanged = false;
 
-        // These two variables track mData values for consistent UI operation.
-        float3 mUiLightIntensityColor = float3(0.5f, 0.5f, 0.5f);
-        float mUiLightIntensityScale = 1.0f;
+        SpectralProfile intensitySpectrum;
+
         LightData mData;
         LightData mPrevData;
         Changes mChanges = Changes::None;
@@ -155,7 +146,7 @@ namespace Falcor
 
         /** Render UI elements for this light.
         */
-        void renderUI(Gui::Widgets& widget) override;
+        void renderUI(Gui::Widgets& widget, const Scene *scene) override;
 
         /** Get total light power (needed for light picking)
         */
@@ -198,6 +189,12 @@ namespace Falcor
 
         void updateFromAnimation(const rmcv::mat4& transform) override;
 
+        void setLightArea(float A);
+        float getLightArea() const { return mData.surfaceArea; }
+
+        void setEmissionSolidAngle(float Omega);
+        float getEmissionSolidAngle() const { return 4.f*M_PI*(1.f-mData.cosSubtendedAngle*mData.cosSubtendedAngle); }
+
     private:
         PointLight(const std::string& name);
     };
@@ -215,7 +212,7 @@ namespace Falcor
 
         /** Render UI elements for this light.
         */
-        void renderUI(Gui::Widgets& widget) override;
+        void renderUI(Gui::Widgets& widget, const Scene *scene) override;
 
         /** Set the light's world-space direction.
             \param[in] dir Light direction. Does not have to be normalized.
@@ -236,6 +233,9 @@ namespace Falcor
 
         void updateFromAnimation(const rmcv::mat4& transform) override;
 
+        void setSourceSolidAngle(float Omega);
+        float getSourceSolidAngle() const { return 4.f*M_PI*(1.f-mData.cosSubtendedAngle*mData.cosSubtendedAngle); }
+
     private:
         DirectionalLight(const std::string& name);
     };
@@ -253,16 +253,10 @@ namespace Falcor
 
         /** Render UI elements for this light.
         */
-        void renderUI(Gui::Widgets& widget) override;
+        void renderUI(Gui::Widgets& widget, const Scene *scene) override;
 
-        /** Set the half-angle subtended by the light
-            \param[in] theta Light angle
-        */
-        void setAngle(float theta);
-
-        /** Get the half-angle subtended by the light
-        */
-        float getAngle() const { return mAngle; }
+        void setSourceSolidAngle(float Omega);
+        float getSourceSolidAngle() const { return 4.f*M_PI*(1.f-mData.cosSubtendedAngle*mData.cosSubtendedAngle); }
 
         /** Set the light's world-space direction.
             \param[in] dir Light direction. Does not have to be normalized.
@@ -319,6 +313,9 @@ namespace Falcor
         rmcv::mat4 getTransformMatrix() const { return mTransformMatrix; }
 
         void updateFromAnimation(const rmcv::mat4& transform) override { setTransformMatrix(transform); }
+
+        void setEmissionSolidAngle(float Omega);
+        float getEmissionSolidAngle() const { return 4.f*M_PI*(1.f-mData.cosSubtendedAngle*mData.cosSubtendedAngle); }
 
     protected:
         AnalyticAreaLight(const std::string& name, LightType type);

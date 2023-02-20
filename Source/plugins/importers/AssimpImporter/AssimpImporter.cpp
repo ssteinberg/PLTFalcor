@@ -332,7 +332,8 @@ void createCameras(ImporterData& data, ImportMode importMode)
 void addLightCommon(const Light::SharedPtr& pLight, const rmcv::mat4& baseMatrix, ImporterData& data, const aiLight* pAiLight)
 {
     FALCOR_ASSERT(pAiLight->mColorDiffuse == pAiLight->mColorSpecular);
-    pLight->setIntensity(aiCast(pAiLight->mColorSpecular));
+    // TODO: Handle spectrum
+    //pLight->setIntensity(aiCast(pAiLight->mColorSpecular));
 
     // Find if the light is affected by a node
     NodeID nodeID = data.getFalcorNodeID(pAiLight->mName.C_Str(), 0);
@@ -866,7 +867,8 @@ Material::SharedPtr createMaterial(
     if (pAiMaterial->Get(AI_MATKEY_COLOR_EMISSIVE, color) == AI_SUCCESS)
     {
         float3 emissive = float3(color.r, color.g, color.b);
-        pMaterial->setEmissiveColor(emissive);
+        // TODO: Handle
+        //pMaterial->setEmissiveColor(emissive);
     }
 
     // Double-Sided

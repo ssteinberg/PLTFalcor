@@ -26,7 +26,6 @@
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
 #include "Utils/Math/MathConstants.slangh"
-#include "BSDFConfig.slangh"
 
 import Utils.Math.MathHelpers;
 __exported import Rendering.Materials.NDF;

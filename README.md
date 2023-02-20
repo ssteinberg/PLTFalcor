@@ -1,17 +1,51 @@
-![](docs/images/teaser.png)
 
-# Falcor
+# Real-time physical light transport (PLT) framework
 
-Falcor is a real-time rendering framework supporting DirectX 12 and Vulkan. It aims to improve productivity of research and prototype projects.
+This repository demonstrates interactive wave-optical rendering, and implements core concepts from the PLT series of publications. See relevant papers:
+- [A Generalized Ray Formulation For Wave-Optics Rendering]()
+- [Towards Practical Physical-Optics Rendering](https://ssteinberg.xyz/2022/04/03/practical_plt/)
+- [Physical Light-Matter Interaction in Hermite-Gauss Space](https://ssteinberg.xyz/2021/07/31/physical_light_matter_interaction_hg_space/)
+- [A Generic Framework for Physical Light Transport](https://ssteinberg.xyz/2021/04/26/generic_physical_light_transport_framework/)
 
-Features include:
-* Abstracting many common graphics operations, such as shader compilation, model loading, and scene rendering
-* DirectX Raytracing abstraction
-* Render Graph system
-* Python scripting
-* Common rendering effects such as shadows and post-processing effects
-* Unbiased path tracer
-* Integration of various RTX SDKs: DLSS, RTXGI, RTXDI, NRD
+Path tracing is done unidirectionally with **generalized rays** (wave-optical constructs which generalize the classical rays typically used in rendering to wave optics).
+The renderer is spectral (with spectral MIS) and polarimetric.
+
+All materials are diffractive, polarization-aware and optical coherence aware.
+The following PLT materials are implemented:
+- Dielectrics
+- Conductors
+- Coated dielectrics
+- Coated conductors
+- Diffraction-grated dielectrics
+- Diffraction-grated conductors
+- Birefringent thin dielectrics
+- Alternating multi-layered stacks on a dielectric
+
+All surfaces allow arbitrary roughness (coherence-aware, first-order SPM with a K-Correlation PSD), modelled to match the "look-and-feel" of microfacet GGX roughness, but with correct physics.
+All conductors use tabulated spectral refractive-indices, and all light sources use spectral emission tables of real light sources (see 'Source/Tables' for tabulated data). Light emission data is from [LSPDD](https://lspdd.org).
+
+Manifold sampling (MS) is implemented. MS enables exploring NEE connections through dielectrics, as well as NEE with a delta lobe. This is used to render the dispersive lobes of a diffraction grating, as demonstrated in the images below.
+
+A few sample scenes with diffractive materials can be found [here]().
+Other PBRT, Falcor and mitsuba scenes can be loaded (PBRT and mitsuba importers with limited support), and materials are automatically converted to PLT materials.
+
+Builds upon the **Falcor** real-time rendering framework.
+For more information and additional resources, see the [Falcor GitHub page](https://github.com/NVIDIAGameWorks/Falcor).
+
+![](docs/images/image1.png)
+![](docs/images/image3.png)
+![](docs/images/image5.png)
+![](docs/images/image6.png)
+
+Additional rendered images and videos available [here]().
+
+
+## Usage
+- Run **Mogwai**
+- Load script **'scripts/PLTPathTracer.py'** (or **'scripts/PLTPathTracerNoDenoiser.py'**)
+- Load a scene
+
+To use the OptiX denoiser, OptiX and Cuda should be installed. See below.
 
 ## Prerequisites
 - Windows 10 version 20H2 (October 2020 Update) or newer, OS build revision .789 or newer
@@ -26,7 +60,7 @@ Optional:
     - Download an offline package from [here](https://docs.microsoft.com/en-us/windows-hardware/test/hlk/windows-hardware-lab-kit#supplemental-content-for-graphics-media-and-mean-time-between-failures-mtbf-tests). Choose a ZIP file that matches the OS version you are using (not the SDK version used for building Falcor). The ZIP includes a document which explains how to install the graphics tools.
 - NVAPI, CUDA, OptiX (see below)
 
-## Building Falcor
+## Building
 Falcor uses the [CMake](https://cmake.org) build system. Additional information on how to use Falcor with CMake is available in the [CMake](docs/development/cmake.md) development documetation page.
 
 ### Visual Studio
@@ -70,24 +104,9 @@ To enable CUDA support, download and install [CUDA 11.6.2](https://developer.nvi
 See the `CudaInterop` sample application located in `Source/Samples/CudaInterop` for an example of how to use CUDA.
 
 ## OptiX
-If you want to use Falcor's OptiX functionality (specifically the `OptixDenoiser` render pass) download the [OptiX SDK](https://developer.nvidia.com/designworks/optix/download) (Falcor is currently tested against OptiX version 7.3) After running the installer, link or copy the OptiX SDK folder into `external/packman/optix` (i.e., file `external/packman/optix/include/optix.h` should exist).
+If you want to use Falcor's OptiX functionality (specifically the `OptixDenoiser` render pass) download the [OptiX SDK](https://developer.nvidia.com/designworks/optix/download) (Falcor is currently tested against OptiX version 7.6) After running the installer, link or copy the OptiX SDK folder into `external/packman/optix` (i.e., file `external/packman/optix/include/optix.h` should exist).
 
 Note: You also need CUDA installed to compile the `OptixDenoiser` render pass, see above for details.
-
-## NVIDIA RTX SDKs
-Falcor ships with the following NVIDIA RTX SDKs:
-
-- DLSS (https://github.com/NVIDIA/DLSS)
-- RTXGI (https://github.com/NVIDIAGameWorks/RTXGI)
-- RTXDI (https://github.com/NVIDIAGameWorks/RTXDI)
-- NRD (https://github.com/NVIDIAGameWorks/RayTracingDenoiser)
-
-Note that these SDKs are not under the same license as Falcor, see [LICENSE.md](LICENSE.md) for details.
-
-## Falcor Configuration
-`FalcorConfig.h` contains some flags which control Falcor's behavior.
-- `FALCOR_ENABLE_LOGGER` - Enable/disable the logger. By default, it is set to `1`.
-- `FALCOR_ENABLE_PROFILER` - Enable/disable the internal CPU/GPU profiler. By default, it is set to `1`.
 
 ## Resources
 - [Falcor](https://github.com/NVIDIAGameWorks/Falcor): Falcor's GitHub page.
@@ -98,17 +117,6 @@ Note that these SDKs are not under the same license as Falcor, see [LICENSE.md](
 - [ORCA](https://developer.nvidia.com/orca): A collection of scenes and assets optimized for Falcor.
 - [Slang](https://github.com/shader-slang/slang): Falcor's shading language and compiler.
 
-## Citation
-If you use Falcor in a research project leading to a publication, please cite the project.
-The BibTex entry is
+---
 
-```bibtex
-@Misc{Kallweit22,
-   author =      {Simon Kallweit and Petrik Clarberg and Craig Kolb and Tom{'a}{\v s} Davidovi{\v c} and Kai-Hwa Yao and Theresa Foley and Yong He and Lifan Wu and Lucy Chen and Tomas Akenine-M{\"o}ller and Chris Wyman and Cyril Crassin and Nir Benty},
-   title =       {The {Falcor} Rendering Framework},
-   year =        {2022},
-   month =       {8},
-   url =         {https://github.com/NVIDIAGameWorks/Falcor},
-   note =        {\url{https://github.com/NVIDIAGameWorks/Falcor}}
-}
-```
+<a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc/4.0/88x31.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/">Creative Commons Attribution-NonCommercial 4.0 International License</a>.

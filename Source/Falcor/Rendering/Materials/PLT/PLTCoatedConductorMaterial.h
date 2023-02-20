@@ -1,0 +1,84 @@
+/***************************************************************************
+ # PLT
+ # Copyright (c) 2022-23, Shlomi Steinberg. All rights reserved.
+ #
+ # Redistribution and use in source and binary forms, with or without
+ # modification, are permitted provided that the following conditions
+ # are met:
+ #  * Redistributions of source code must retain the above copyright
+ #    notice, this list of conditions and the following disclaimer.
+ #  * Redistributions in binary form must reproduce the above copyright
+ #    notice, this list of conditions and the following disclaimer in the
+ #    documentation and/or other materials provided with the distribution.
+ #  * Neither the name of NVIDIA CORPORATION nor the names of its
+ #    contributors may be used to endorse or promote products derived
+ #    from this software without specific prior written permission.
+ #
+ # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS "AS IS" AND ANY
+ # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ # PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ # CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ # EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ # PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ # PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ # OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ **************************************************************************/
+#pragma once
+#include "Scene/Material/BasicMaterial.h"
+
+namespace Falcor
+{
+    /** This class implements a rough conductor coated with a smooth dielectric material.
+
+        Texture channel layout:
+
+            BaseColor
+                - RGB - Reflectance color modulator
+            Specular
+                - G - Base roughness
+                - B - Coat thickness scale
+            Data1
+                - R - Coat thickness
+                - A - Coat IOR
+            Normal
+                - 3-Channel standard normal map, or 2-Channel BC5 format
+
+        See additional texture channels defined in BasicMaterial.
+    */
+    class FALCOR_API PLTCoatedConductorMaterial : public BasicMaterial
+    {
+    public:
+        using SharedPtr = std::shared_ptr<PLTCoatedConductorMaterial>;
+
+        /** Create a new PLTCoatedConductor material.
+            \param[in] name The material name.
+        */
+        static SharedPtr create(std::shared_ptr<Device> pDevice, const std::string& name = "");
+
+        Program::ShaderModuleList getShaderModules() const override;
+        Program::TypeConformanceList getTypeConformances() const override;
+
+        void setRoughness(float);
+        float getRoughness() const { return (float)mData.specular[1]; }
+
+        void setCoatIndexOfRefraction(float ior);
+        float getCoatIndexOfRefraction() const { return (float)mData.data1[3]; }
+
+        // Thickness in um
+        void setCoatThickness(float thickness);
+        float getCoatThickness() const { return (float)mData.data1[0]; }
+        void setCoatThicknessScale(float thickness);
+        float getCoatThicknessScale() const { return (float)mData.specular[2]; }
+
+        void setExtIndexOfRefraction(float ior) { setIndexOfRefraction(ior); }
+        float getExtIndexOfRefraction() const { return getIndexOfRefraction(); }
+
+        bool renderUI(Gui::Widgets& widget, const Scene* scene);
+
+    protected:
+        PLTCoatedConductorMaterial(std::shared_ptr<Device> pDevice, const std::string& name);
+    };
+}

@@ -64,8 +64,8 @@ struct CameraData
     float    apertureRadius         = 0.0f;                     ///< Camera aperture radius in scene units.
     float    shutterSpeed           = 0.004f;                   ///< Camera shutter speed in seconds.
     float    ISOSpeed               = 100.0f;                   ///< Camera film speed based on ISO standards.
-    float   _padding1;
-    float   _padding2;
+    float   polarizerTheta          = .0f;
+    float   polarizer               = .0f;
 };
 
 END_NAMESPACE_FALCOR

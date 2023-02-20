@@ -93,8 +93,6 @@
 #include "Scene/Lights/Light.h"
 #include "Scene/Material/MaterialSystem.h"
 #include "Scene/Material/StandardMaterial.h"
-#include "Scene/Material/HairMaterial.h"
-#include "Scene/Material/ClothMaterial.h"
 #include "Scene/Animation/Animation.h"
 #include "Scene/Animation/AnimationController.h"
 

@@ -38,6 +38,7 @@
 #include "Lights/EnvMap.h"
 #include "Camera/Camera.h"
 #include "Camera/CameraController.h"
+#include "Material/BasicMaterial.h"
 #include "Material/MaterialSystem.h"
 #include "Volume/GridVolume.h"
 #include "Volume/Grid.h"
@@ -311,6 +312,7 @@ namespace Falcor
             uint32_t selectedCamera = 0;                            ///< Index of selected camera.
             float cameraSpeed = 1.f;                                ///< Camera speed.
             std::vector<Light::SharedPtr> lights;                   ///< List of light sources.
+            std::vector<SpectralProfile> spectralProfiles;          ///< Spectrum profiles
             MaterialSystem::SharedPtr pMaterials;                   ///< Material system. This holds data and resources for all materials.
             std::vector<GridVolume::SharedPtr> gridVolumes;         ///< List of grid volumes.
             std::vector<Grid::SharedPtr> grids;                     ///< List of grids.
@@ -1102,6 +1104,8 @@ namespace Falcor
 
         std::string getScript(const std::string& sceneVar);
 
+        const auto& getSpectralProfile(std::size_t idx) const { return mSpectralProfiles[idx]; }
+
     private:
         friend class AnimationController;
         friend class AnimatedVertexCache;
@@ -1205,6 +1209,7 @@ namespace Falcor
 
         UpdateFlags updateSelectedCamera(bool forceUpdate);
         UpdateFlags updateLights(bool forceUpdate);
+        UpdateFlags updateSpectralProfiles(bool forceUpdate);
         UpdateFlags updateGridVolumes(bool forceUpdate);
         UpdateFlags updateEnvMap(bool forceUpdate);
         UpdateFlags updateMaterials(bool forceUpdate);
@@ -1295,6 +1300,7 @@ namespace Falcor
 
         // Lights
         std::vector<Light::SharedPtr> mLights;                      ///< All analytic lights. Note that not all may be active.
+        std::vector<SpectralProfile> mSpectralProfiles;             ///< Spectrum profiles
         std::vector<Light::SharedPtr> mActiveLights;                ///< All active analytic lights.
         std::vector<GridVolume::SharedPtr> mGridVolumes;            ///< All loaded grid volumes.
         std::vector<Grid::SharedPtr> mGrids;                        ///< All loaded grids.
@@ -1327,6 +1333,7 @@ namespace Falcor
         Buffer::SharedPtr mpCurvesBuffer;
         Buffer::SharedPtr mpCustomPrimitivesBuffer;
         Buffer::SharedPtr mpLightsBuffer;
+        Buffer::SharedPtr mpSpectralProfilesBuffer;
         Buffer::SharedPtr mpGridVolumesBuffer;
         ParameterBlock::SharedPtr mpSceneBlock;
 

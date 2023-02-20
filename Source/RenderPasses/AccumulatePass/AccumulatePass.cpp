@@ -34,6 +34,8 @@ static void regAccumulatePass(pybind11::module& m)
     pass.def_property("enabled", &AccumulatePass::isEnabled, &AccumulatePass::setEnabled);
     pass.def("reset", &AccumulatePass::reset);
 
+    pass.def_property("maxAccmulatedFrames", &AccumulatePass::getMaxAccumulatedFrames, &AccumulatePass::setMaxAccumulatedFrames);
+
     pybind11::enum_<AccumulatePass::Precision> precision(m, "AccumulatePrecision");
     precision.value("Double", AccumulatePass::Precision::Double);
     precision.value("Single", AccumulatePass::Precision::Single);

@@ -100,6 +100,22 @@ namespace Falcor
         */
         static SharedPtr createSphere(float radius = 0.5f, uint32_t segmentsU = 32, uint32_t segmentsV = 16);
 
+        /** Creates a UV cylinder mesh, centered at the origin with poles in positive/negative Y direction.
+            \param[in] radius Radius of the cylinder.
+            \param[in] height Height of the cylinder.
+            \param[in] segments Number of segments
+            \return Returns the triangle mesh.
+        */
+        static SharedPtr createCylinder(float radius = 0.5f, float height = 1.f, uint32_t segments = 32);
+
+        /** Creates a UV prism mesh, centered at the origin.
+            \param[in] a Length of side a.
+            \param[in] b Length of side b.
+            \param[in] height height of prism.
+            \return Returns the triangle mesh.
+        */
+        static SharedPtr createPrism(float a = 0.5f, float b = 0.5f, float height = 0.5f);
+
         /** Creates a triangle mesh from a file.
             This is using ASSIMP to support a wide variety of asset formats.
             All geometry found in the asset is pre-transformed and merged into the same triangle mesh.
@@ -167,6 +183,14 @@ namespace Falcor
             \param[in] transform Transform to apply.
         */
         void applyTransform(const rmcv::mat4& transform);
+
+         /** Flips the normal and triangle winding.
+         */
+         void flipNormals();
+
+         /** Flips the v texture coordinates to 1 - v.
+         */
+         void flipTexCoords();
 
     private:
         TriangleMesh();

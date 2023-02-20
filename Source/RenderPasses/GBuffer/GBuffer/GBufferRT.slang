@@ -33,6 +33,7 @@ import Utils.Sampling.SampleGenerator;
 import Utils.Debug.PixelDebug;
 import Rendering.Materials.TexLODTypes;
 import Rendering.Materials.TexLODHelpers;
+import Rendering.Utils.DifferentialShadingGeometry;
 import GBufferHelpers;
 
 // GBuffer channels
@@ -176,10 +177,14 @@ struct GBufferRT
         float disocclusion = 0.f;
         ITextureSampler lod = ExplicitLodTextureSampler(0.f); // The default LOD method is replaced below in some cases.
 
+        DifferentialShadingGeometry sdg = {};
+
         // Compute data at the hit.
         if (hit.getType() == HitType::Triangle)
         {
             const TriangleHit triangleHit = hit.getTriangleHit();
+
+            sdg = differentialShadingGeometry(gScene, triangleHit);
 
             materialID = gScene.getMaterialID(triangleHit.instanceID);
             v = gScene.getVertexData(triangleHit);
@@ -306,8 +311,8 @@ struct GBufferRT
         // Output a buffer that packs guide normal and roughness estimation.
         if (is_valid(gNormalWRoughnessMaterialID))
         {
-            float3 normal = bsdfProperties.guideNormal;
-            if (sd.mtl.getMaterialType() == MaterialType::Hair) normal = sd.T;
+            // float3 normal = bsdfProperties.guideNormal;
+            float3 normal = .0f;
 
             float2 octNormal = ndir_to_oct_unorm(normal);
             float roughness = bsdfProperties.roughness;

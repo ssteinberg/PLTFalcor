@@ -51,7 +51,7 @@ namespace Falcor
         */
         static SharedPtr create(std::shared_ptr<Device> pDevice, const std::string& name, const std::filesystem::path& path);
 
-        bool renderUI(Gui::Widgets& widget) override;
+        bool renderUI(Gui::Widgets& widget, const Scene *scene) override;
         Material::UpdateFlags update(MaterialSystem* pOwner) override;
         bool isEqual(const Material::SharedPtr& pOther) const override;
         MaterialDataBlob getDataBlob() const override { return prepareDataBlob(mData); }

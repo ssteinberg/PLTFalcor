@@ -1,0 +1,176 @@
+/***************************************************************************
+ # PLT
+ # Copyright (c) 2022-23, Shlomi Steinberg. All rights reserved.
+ #
+ # Redistribution and use in source and binary forms, with or without
+ # modification, are permitted provided that the following conditions
+ # are met:
+ #  * Redistributions of source code must retain the above copyright
+ #    notice, this list of conditions and the following disclaimer.
+ #  * Redistributions in binary form must reproduce the above copyright
+ #    notice, this list of conditions and the following disclaimer in the
+ #    documentation and/or other materials provided with the distribution.
+ #  * Neither the name of NVIDIA CORPORATION nor the names of its
+ #    contributors may be used to endorse or promote products derived
+ #    from this software without specific prior written permission.
+ #
+ # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS "AS IS" AND ANY
+ # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ # PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ # CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ # EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ # PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ # PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ # OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ **************************************************************************/
+
+#pragma once
+
+#include "Scene/SceneDefines.slangh"
+#include "Utils/Math/MathConstants.slangh"
+
+#include "pltpt_constants.slangh"
+#include "pltpt_debug.slangh"
+
+#include "DebugViewType.slangh"
+
+#include "ShadowRays.slangh"
+#include "Manifolds.slangh"
+
+import Scene.Raytracing;
+import Scene.Intersection;
+import Scene.ShadingData;
+import Scene.Scene;
+
+import Utils.HWSS;
+import Utils.Math.MathHelpers;
+import Utils.Sampling.SampleGenerator;
+import Utils.Geometry.GeometryHelpers;
+import Utils.Color.SpectrumSampler;
+import Utils.Color.SpectrumUtils;
+
+import Path;
+import Rendering.PLT;
+
+import Rendering.Lights.LightHelpers;
+import Rendering.Lights.EmissiveLightSampler;
+import Rendering.Lights.EmissiveLightSamplerHelpers;
+import Rendering.Lights.EnvMapSampler;
+
+import Rendering.Materials.BxDF;
+import Rendering.Materials.PLT.Mueller;
+
+import Rendering.Utils.LightsSamplingUtils;
+import Rendering.Utils.DifferentialShadingGeometry;
+
+import ColourCoding;
+
+
+cbuffer CB {
+    uint gFrameCount;        // Frame count since scene was loaded.
+    EnvMapSampler envMapSampler;
+    EmissiveLightSampler emissiveSampler;
+
+    uint2 kOutputSize;
+    uint2 kTile;
+
+    // Area on emissive geometry from which we source beams
+    float kSourcingAreaFromEmissiveGeometry;
+    // Max diffusivity of sourced beams
+    float kSourcingMaxBeamOmega;
+
+#if DO_DEBUG_VIEW == 1
+    float kDebugViewIntensity;
+#endif
+}
+
+// Inputs
+Texture2D<PackedHitInfo> gVBuffer;
+Texture2D<float4> gViewW; // Optional
+
+// Outputs
+RWTexture2D<float4> gOutputColor;
+RWTexture2D<float4> gOutputNormal;
+RWTexture2D<float4> gOutputAlbedo;
+
+
+static const uint mMaxBounces = MAX_BOUNCES;
+static const uint mTileSize = TILE_SIZE;
+
+static const bool mHWSSDoMIS = HWSS_MIS;
+
+static const uint kDebugViewType = DEBUG_VIEW_TYPE;
+
+static const bool kUseDirectLights = USE_DIRECT_LIGHTS;
+static const bool kUseEmissiveLights = USE_EMISSIVE_LIGHTS;
+static const bool kUseEnvLight = USE_ENV_LIGHT;
+static const bool kUseAnalyticLights = USE_ANALYTIC_LIGHTS;
+
+static const bool kAlphaMasking = ALPHA_MASKING;
+
+static const bool kImportanceSampleEmissiveSpectra = DO_IMPORTANCE_SAMPLING_EMITTERS;
+
+static const bool kDoNEE = DO_NEE;
+static const bool kDoMSonNEE = kDoNEE && DO_MNEE;
+static const bool kDoMIS = kDoNEE && DO_MIS;
+
+static const bool kNEEUsePerTileSelectorSG = kDoNEE && NEE_USE_PER_TILE_SG_SELECTOR;
+
+static const bool kDoRussianRoulette = DO_RUSSIAN_ROULETTE;
+
+static const bool kForceFullyCoherent = false;
+
+
+/** Bounce storage */
+
+RWStructuredBuffer<BounceData> bounceBuffer;
+
+// Read a bounce
+BounceData readBounce(int p, const uint2 pixel) {
+    const uint idx = ((pixel.x % mTileSize) + (pixel.y % mTileSize)*mTileSize)*(mMaxBounces+1) + p;
+    return bounceBuffer[idx];
+}
+
+// Append a bounce on successful BSDF sample
+void appendBounce(inout Path path,
+                  const PackedHitInfo hitInfo,
+                  const float3 wi,
+                  const uint bsdfSampledLobe) {
+    const uint2 pixel = path.getPixel();
+    const uint idx = ((pixel.x % mTileSize) + (pixel.y % mTileSize)*mTileSize)*(mMaxBounces+1) + path.length;
+
+    BounceData bounce;
+    bounce.flags = path.flags;
+    bounce.hit = hitInfo;
+    bounce.wi = wi;
+    bounce.sampledBsdfLobe = bsdfSampledLobe;
+    bounce.lastNonDeltaPdf = path.lastNonDeltaPdf;
+    bounce.pathContribution = 1.f / (path.pdf * path.thp_modifier);
+
+    bounceBuffer[idx] = bounce;
+}
+
+// Append a bounce on path termination
+void appendBounce(inout Path path, const PackedHitInfo hitInfo, const float3 wi) {
+    appendBounce(path, hitInfo, wi, 0);
+}
+
+// Append a bounce on miss
+void appendBounce(inout Path path, const float3 wi) {
+    PackedHitInfo info = {};
+    appendBounce(path, info, wi, 0);
+}
+
+
+
+/** Russian Roulette */
+float RR(const float rrVal, const float rrE, const float sample) {
+    const float p = pow(rrVal, rrE);
+
+    return sample<p ?
+        .0f :
+        1.f-p;
+}

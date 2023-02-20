@@ -122,7 +122,7 @@ private:
     bool mWhiteBalance = false;         ///< Enable white balance.
     float mWhitePoint = 6500.0f;        ///< White point (K).
 
-    Operator mOperator = Operator::Aces;///< Tone mapping operator.
+    Operator mOperator = Operator::HableUc2; ///< Tone mapping operator.
     bool mClamp = true;                 ///< Clamp output to [0,1].
 
     float mWhiteMaxLuminance = 1.0f;    ///< Parameter used in ModifiedReinhard operator.

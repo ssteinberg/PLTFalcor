@@ -25,6 +25,8 @@
  # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
+
+import Utils.HWSS;
 __exported import Utils.Sampling.SampleGeneratorInterface;
 
 /** Slang interface and structs used by emissive light samplers.
@@ -40,7 +42,8 @@ struct TriangleLightSample
     float3  normalW;            ///< Normal of the sampled point on the light source in world space.
     float3  dir;                ///< Normalized direction from the shading point to the sampled point on the light source in world space.
     float   distance;           ///< Distance from the shading point to the sampled point.
-    float3  Le;                 ///< Emitted radiance. This is zero if the light is back-facing or sample is invalid.
+    hwss_t  Le;                 ///< Emitted radiance. This is zero if the light is back-facing or sample is invalid.
+    hwss_t wavelengths;         ///< Sampled wavelengths
     float   pdf;                ///< Probability density with respect to solid angle from the shading point. The range is [0,inf] (inclusive), where pdf == 0.0 indicated an invalid sample.
     float2  uv;                 ///< Light sample barycentric coords over the triangle
 };
@@ -67,7 +70,7 @@ interface IEmissiveLightSampler
         \param[out] ls Light sample. Only valid if true is returned.
         \return True if a sample was generated, false otherwise.
     */
-    bool sampleLight<S : ISampleGenerator>(const float3 posW, const float3 normalW, const bool upperHemisphere, inout S sg, out TriangleLightSample ls);
+    bool sampleLight<S : ISampleGenerator>(const float3 posW, const float3 normalW, const bool upperHemisphere, inout S sg, const float wavelength, bool importanceSampleSpectrum, out TriangleLightSample ls);
 
     /** Evaluate the PDF associated with selecting an emissive triangle.
         \param[in] posW Shading point in world space.

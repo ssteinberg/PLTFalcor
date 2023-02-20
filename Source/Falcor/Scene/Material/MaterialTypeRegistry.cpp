@@ -91,17 +91,16 @@ private:
         mMaterialType2Name = {
             { MaterialType::Unknown, "Unknown" },
             { MaterialType::Standard, "Standard" },
-            { MaterialType::Cloth, "Cloth" },
-            { MaterialType::Hair, "Hair" },
-            { MaterialType::MERL, "MERL" },
-            { MaterialType::MERLMix, "MERLMix" },
-            { MaterialType::PBRTDiffuse, "PBRTDiffuse" },
-            { MaterialType::PBRTDiffuseTransmission, "PBRTDiffuseTransmission" },
-            { MaterialType::PBRTConductor, "PBRTConductor" },
-            { MaterialType::PBRTDielectric, "PBRTDielectric" },
-            { MaterialType::PBRTCoatedConductor, "PBRTCoatedConductor" },
-            { MaterialType::PBRTCoatedDiffuse, "PBRTCoatedDiffuse" },
-            { MaterialType::RGL, "RGL" },
+            { MaterialType::PLTDiffuse, "PLTDiffuse" },
+            { MaterialType::PLTConductor, "PLTConductor" },
+            { MaterialType::PLTDielectric, "PLTDielectric" },
+            { MaterialType::PLTOpaqueDielectric, "PLTOpaqueDielectric" },
+            { MaterialType::PLTThinDielectric, "PLTThinDielectric" },
+            { MaterialType::PLTCoatedConductor, "PLTCoatedConductor" },
+            { MaterialType::PLTCoatedOpaqueDielectric, "PLTCoatedOpaqueDielectric" },
+            { MaterialType::PLTDiffractionGratedConductor, "PLTDiffractionGratedConductor" },
+            { MaterialType::PLTDiffractionGratedOpaqueDielectric, "PLTDiffractionGratedOpaqueDielectric" },
+            { MaterialType::PLTMultiLayeredStack, "PLTMultiLayeredStack" },
         };
 
         for (const auto& [type, name] : mMaterialType2Name)

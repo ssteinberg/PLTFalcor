@@ -52,6 +52,7 @@ namespace Falcor
         };
 
         Transform();
+        Transform(const glm::mat4& matrix);
 
         const float3& getTranslation() const { return mTranslation; }
         void setTranslation(const float3& translation);

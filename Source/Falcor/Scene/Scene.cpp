@@ -45,6 +45,7 @@
 #include "Utils/Timing/Profiler.h"
 #include "Utils/UI/InputTypes.h"
 #include "Utils/Scripting/ScriptWriter.h"
+#include "Utils/Color/SpectrumUtils.h"
 
 #include <fstream>
 #include <numeric>
@@ -77,6 +78,7 @@ namespace Falcor
         const std::string kCustomPrimitiveBufferName = "customPrimitives";
         const std::string kMaterialsBlockName = "materials";
         const std::string kLightsBufferName = "lights";
+        const std::string kSpectralProfilesBufferName = "spectralProfiles";
         const std::string kGridVolumesBufferName = "gridVolumes";
 
         const std::string kStats = "stats";
@@ -152,6 +154,7 @@ namespace Falcor
         mSelectedCamera = sceneData.selectedCamera;
         mCameraSpeed = sceneData.cameraSpeed;
         mLights = std::move(sceneData.lights);
+        mSpectralProfiles = std::move(sceneData.spectralProfiles);
 
         mpMaterials = std::move(sceneData.pMaterials);
         mGridVolumes = std::move(sceneData.gridVolumes);
@@ -759,6 +762,15 @@ namespace Falcor
             mpCurvesBuffer->setName("Scene::mpCurvesBuffer");
         }
 
+        if (!mSpectralProfiles.empty() &&
+            (!mpSpectralProfilesBuffer || mpSpectralProfilesBuffer->getElementCount() < mSpectralProfiles.size()))
+        {
+            const auto& size = mSpectralProfiles.size();
+
+            mpSpectralProfilesBuffer = Buffer::createStructured(mpDevice.get(), mpSceneBlock[kSpectralProfilesBufferName], (uint32_t)size, Resource::BindFlags::ShaderResource, Buffer::CpuAccess::None, nullptr, false);
+            mpSpectralProfilesBuffer->setName("Scene::mpSpectralProfilesBuffer");
+        }
+
         if (!mLights.empty() &&
             (!mpLightsBuffer || mpLightsBuffer->getElementCount() < mLights.size()))
         {
@@ -777,6 +789,7 @@ namespace Falcor
         mpSceneBlock[kGeometryInstanceBufferName] = mpGeometryInstancesBuffer;
         mpSceneBlock[kMeshBufferName] = mpMeshesBuffer;
         mpSceneBlock[kCurveBufferName] = mpCurvesBuffer;
+        mpSceneBlock[kSpectralProfilesBufferName] = mpSpectralProfilesBuffer;
         mpSceneBlock[kLightsBufferName] = mpLightsBuffer;
         mpSceneBlock[kGridVolumesBufferName] = mpGridVolumesBuffer;
 
@@ -1221,6 +1234,7 @@ namespace Falcor
         uploadSelectedCamera();
         addViewpoint();
         updateLights(true);
+        updateSpectralProfiles(true);
         updateGridVolumes(true);
         updateEnvMap(true);
         uploadResources(); // Upload data after initialization is complete
@@ -1542,6 +1556,16 @@ namespace Falcor
         return flags;
     }
 
+    Scene::UpdateFlags Scene::updateSpectralProfiles(bool forceUpdate)
+    {
+        if (!mpSpectralProfilesBuffer) return UpdateFlags::None;
+
+        for (std::size_t idx=0; idx<mSpectralProfiles.size(); ++idx)
+            mpSpectralProfilesBuffer->setElement(idx, mSpectralProfiles[idx]);
+
+        return UpdateFlags::None;
+    }
+
     Scene::UpdateFlags Scene::updateLights(bool forceUpdate)
     {
         Light::Changes combinedChanges = Light::Changes::None;
@@ -1716,6 +1740,7 @@ namespace Falcor
             }
 
             updateMaterialStats();
+            updateSpectralProfiles(false);
         }
 
         return flags;
@@ -1998,7 +2023,7 @@ namespace Falcor
                 auto name = std::to_string(lightID) + ": " + light->getName();
                 if (auto lightGroup = lightsGroup.group(name))
                 {
-                    light->renderUI(lightGroup);
+                    light->renderUI(lightGroup, this);
                 }
                 lightID++;
             }
@@ -2014,7 +2039,7 @@ namespace Falcor
 
         if (auto materialsGroup = widget.group("Materials"))
         {
-            mpMaterials->renderUI(materialsGroup);
+            mpMaterials->renderUI(materialsGroup, this);
         }
 
         if (auto volumesGroup = widget.group("Grid volumes"))

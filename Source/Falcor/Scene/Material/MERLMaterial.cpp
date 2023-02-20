@@ -94,7 +94,7 @@ namespace Falcor
         markUpdates(Material::UpdateFlags::ResourcesChanged);
     }
 
-    bool MERLMaterial::renderUI(Gui::Widgets& widget)
+    bool MERLMaterial::renderUI(Gui::Widgets& widget, const Scene *scene)
     {
         bool changed = false;
 

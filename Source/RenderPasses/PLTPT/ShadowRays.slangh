@@ -1,0 +1,135 @@
+/***************************************************************************
+ # PLT
+ # Copyright (c) 2022-23, Shlomi Steinberg. All rights reserved.
+ #
+ # Redistribution and use in source and binary forms, with or without
+ # modification, are permitted provided that the following conditions
+ # are met:
+ #  * Redistributions of source code must retain the above copyright
+ #    notice, this list of conditions and the following disclaimer.
+ #  * Redistributions in binary form must reproduce the above copyright
+ #    notice, this list of conditions and the following disclaimer in the
+ #    documentation and/or other materials provided with the distribution.
+ #  * Neither the name of NVIDIA CORPORATION nor the names of its
+ #    contributors may be used to endorse or promote products derived
+ #    from this software without specific prior written permission.
+ #
+ # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS "AS IS" AND ANY
+ # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ # PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ # CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ # EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ # PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ # PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ # OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ **************************************************************************/
+
+#include "Utils/Math/MathConstants.slangh"
+
+import Scene.Scene;
+import Scene.Raytracing;
+import Utils.Geometry.GeometryHelpers;
+
+
+#ifndef VISIBILITY_RAY_ID
+#define VISIBILITY_RAY_ID 0
+#endif
+#ifndef SHADOW_RAY_ID
+#define SHADOW_RAY_ID 1
+#endif
+static const uint defaultVisibilityRayId = VISIBILITY_RAY_ID;
+static const uint defaultShadowRayId = SHADOW_RAY_ID;
+
+
+static const float kShadowRayTMin = 1e-4;
+static const float kRayTMax = FLT_MAX;
+
+float3 computeNewRayOrigin(const ShadingData sd, float3 rayDir) {
+    return computeRayOrigin(sd.posW, dot(sd.faceN, rayDir) >= .0f ? sd.faceN : -sd.faceN);
+}
+
+
+/** Payload for visibility ray */
+struct VisibilityRayData {
+    bool visible;
+};
+
+[shader("miss")]
+void visibilityMiss(inout VisibilityRayData path) {
+    path.visible = true;
+}
+
+bool visibilityRay(RayDesc ray, uint idx=defaultVisibilityRayId) {
+    VisibilityRayData visibilityRayData;
+    visibilityRayData.visible = false;
+    TraceRay(
+        gScene.rtAccel,
+        RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // rayFlags
+        0xff,            // instanceInclusionMask
+        idx,             // hitIdx
+        rayTypeCount,
+        idx,             // missIdx
+        ray,
+        visibilityRayData
+    );
+    return visibilityRayData.visible;
+}
+
+bool visibilityRay(float3 origin, float3 dir, float distMax, float distMin = kShadowRayTMin, uint rayIdx=defaultVisibilityRayId) {
+    RayDesc ray;
+    ray.Origin = origin;
+    ray.Direction = dir;
+    ray.TMin = distMin;
+    ray.TMax = distMax;
+    return visibilityRay(ray, rayIdx);
+}
+
+
+/** Payload for shadow sampling ray */
+struct ShadowRayHit {
+    PackedHitInfo hitInfo;
+    float dist;
+    property isHit : bool {
+        get { return dist>.0f; }
+    }
+};
+
+[shader("closesthit")]
+void shadowTriangleMeshHit(inout ShadowRayHit data, BuiltInTriangleIntersectionAttributes attribs) {
+    TriangleHit triangleHit;
+    triangleHit.instanceID = getGeometryInstanceID();
+    triangleHit.primitiveIndex = PrimitiveIndex();
+    triangleHit.barycentrics = attribs.barycentrics;
+
+    // Store hit and instance index
+    data.hitInfo = triangleHit.pack();
+    data.dist    = RayTCurrent();
+}
+
+ShadowRayHit shadowRay(RayDesc ray, uint rayIdx=defaultShadowRayId) {
+    ShadowRayHit rayData;
+    rayData.dist = .0f;
+    TraceRay(
+        gScene.rtAccel,
+        0,
+        0xff,            // instanceInclusionMask
+        rayIdx,          // hitIdx
+        rayTypeCount,
+        rayIdx,          // missIdx
+        ray,
+        rayData
+    );
+    return rayData;
+}
+
+ShadowRayHit shadowRay(float3 origin, float3 dir, float distMax, float distMin = kShadowRayTMin, uint rayIdx=defaultShadowRayId) {
+    RayDesc ray;
+    ray.Origin = origin;
+    ray.Direction = dir;
+    ray.TMin = distMin;
+    ray.TMax = distMax;
+    return shadowRay(ray, rayIdx);
+}

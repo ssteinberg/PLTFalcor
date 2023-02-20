@@ -99,7 +99,7 @@ struct FinalShading
                 sd.mtl.setActiveLobes((uint)LobeType::DiffuseReflection);
                 diffuse = mi.eval(sd, dir, sg) * Li;
 
-                sd.mtl.setActiveLobes((uint)LobeType::SpecularReflection);
+                sd.mtl.setActiveLobes((uint)LobeType::ScatterReflection);
                 specular = mi.eval(sd, dir, sg) * Li;
 
                 hitT = distance;

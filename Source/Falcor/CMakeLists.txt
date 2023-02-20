@@ -213,66 +213,74 @@ target_sources(Falcor PRIVATE
     Rendering/Materials/BSDFIntegrator.h
     Rendering/Materials/BxDF.slang
     Rendering/Materials/BSDFConfig.slangh
-    Rendering/Materials/ClothBRDF.slang
-    Rendering/Materials/ClothMaterialInstance.slang
-    Rendering/Materials/ClothMaterial.slang
+    Rendering/Materials/BSDFSample.slang
     Rendering/Materials/Fresnel.slang
-    Rendering/Materials/HairMaterialInstance.slang
-    Rendering/Materials/HairChiang16.slang
-    Rendering/Materials/HairMaterial.slang
     Rendering/Materials/IMaterialInstance.slang
-    Rendering/Materials/IBSDF.slang
     Rendering/Materials/IMaterial.slang
     Rendering/Materials/INDF.slang
     Rendering/Materials/InteriorList.slang
     Rendering/Materials/InteriorListHelpers.slang
     Rendering/Materials/IsotropicGGX.slang
-    Rendering/Materials/LayeredBSDF.slang
     Rendering/Materials/LobeType.slang
     Rendering/Materials/MERLCommon.slang
-    Rendering/Materials/MERLMaterialInstance.slang
-    Rendering/Materials/MERLMaterial.slang
-    Rendering/Materials/MERLMixMaterialInstance.slang
-    Rendering/Materials/MERLMixMaterial.slang
     Rendering/Materials/Microfacet.slang
     Rendering/Materials/NDF.slang
-    Rendering/Materials/RGLAcquisition.cpp
-    Rendering/Materials/RGLAcquisition.cs.slang
-    Rendering/Materials/RGLAcquisition.h
-    Rendering/Materials/RGLMaterialInstance.slang
-    Rendering/Materials/RGLCommon.slang
-    Rendering/Materials/RGLMaterial.slang
     Rendering/Materials/StandardMaterialInstance.slang
     Rendering/Materials/StandardMaterial.slang
     Rendering/Materials/TexLODHelpers.slang
     Rendering/Materials/TexLODTypes.cpp
     Rendering/Materials/TexLODTypes.slang
 
-    Rendering/Materials/PBRT/PBRTDiffuseMaterial.slang
-    Rendering/Materials/PBRT/PBRTDiffuseMaterialInstance.slang
-    Rendering/Materials/PBRT/PBRTDiffuseTransmissionMaterial.slang
-    Rendering/Materials/PBRT/PBRTDiffuseTransmissionMaterialInstance.slang
-    Rendering/Materials/PBRT/PBRTConductorMaterial.slang
-    Rendering/Materials/PBRT/PBRTConductorMaterialInstance.slang
-    Rendering/Materials/PBRT/PBRTDielectricMaterial.slang
-    Rendering/Materials/PBRT/PBRTDielectricMaterialInstance.slang
-    Rendering/Materials/PBRT/PBRTCoatedConductorMaterial.slang
-    Rendering/Materials/PBRT/PBRTCoatedConductorMaterialInstance.slang
-    Rendering/Materials/PBRT/PBRTCoatedDiffuseMaterial.slang
-    Rendering/Materials/PBRT/PBRTCoatedDiffuseMaterialInstance.slang
+    Rendering/PLT.slang
 
-    Rendering/Materials/BSDFs/BeerBTDF.slang
-    Rendering/Materials/BSDFs/DielectricPlateBSDF.slang
-    Rendering/Materials/BSDFs/DiffuseSpecularBRDF.slang
-    Rendering/Materials/BSDFs/DisneyDiffuseBRDF.slang
-    Rendering/Materials/BSDFs/FrostbiteDiffuseBRDF.slang
-    Rendering/Materials/BSDFs/LambertDiffuseBRDF.slang
-    Rendering/Materials/BSDFs/LambertDiffuseBTDF.slang
-    Rendering/Materials/BSDFs/OrenNayarBRDF.slang
-    Rendering/Materials/BSDFs/SheenBSDF.slang
-    Rendering/Materials/BSDFs/SimpleBTDF.slang
-    Rendering/Materials/BSDFs/SpecularMicrofacet.slang
-    Rendering/Materials/BSDFs/StandardBSDF.slang
+    Rendering/Materials/PLT/GaussianSurface.slang
+    Rendering/Materials/PLT/FractalSurface.slang
+    Rendering/Materials/PLT/DiffractionGrating.slang
+    Rendering/Materials/PLT/DiffractionGrating.slangh
+    Rendering/Materials/PLT/Mueller.slang
+    Rendering/Materials/PLT/Interference.slang
+    Rendering/Materials/PLT/Birefringence.slang
+
+    Rendering/Materials/PLT/PLTDiffuseMaterial.cpp
+    Rendering/Materials/PLT/PLTDiffuseMaterial.h
+    Rendering/Materials/PLT/PLTDiffuseBSDF.slang
+    Rendering/Materials/PLT/PLTDiffuseMaterial.slang
+    Rendering/Materials/PLT/PLTConductorMaterial.cpp
+    Rendering/Materials/PLT/PLTConductorMaterial.h
+    Rendering/Materials/PLT/PLTConductorBSDF.slang
+    Rendering/Materials/PLT/PLTConductorMaterial.slang
+    Rendering/Materials/PLT/PLTDielectricMaterial.cpp
+    Rendering/Materials/PLT/PLTDielectricMaterial.h
+    Rendering/Materials/PLT/PLTDielectricBSDF.slang
+    Rendering/Materials/PLT/PLTDielectricMaterial.slang
+    Rendering/Materials/PLT/PLTOpaqueDielectricMaterial.cpp
+    Rendering/Materials/PLT/PLTOpaqueDielectricMaterial.h
+    Rendering/Materials/PLT/PLTOpaqueDielectricBSDF.slang
+    Rendering/Materials/PLT/PLTOpaqueDielectricMaterial.slang
+    Rendering/Materials/PLT/PLTThinDielectricMaterial.cpp
+    Rendering/Materials/PLT/PLTThinDielectricMaterial.h
+    Rendering/Materials/PLT/PLTThinDielectricBSDF.slang
+    Rendering/Materials/PLT/PLTThinDielectricMaterial.slang
+    Rendering/Materials/PLT/PLTCoatedConductorMaterial.cpp
+    Rendering/Materials/PLT/PLTCoatedConductorMaterial.h
+    Rendering/Materials/PLT/PLTCoatedConductorBSDF.slang
+    Rendering/Materials/PLT/PLTCoatedConductorMaterial.slang
+    Rendering/Materials/PLT/PLTCoatedOpaqueDielectricMaterial.cpp
+    Rendering/Materials/PLT/PLTCoatedOpaqueDielectricMaterial.h
+    Rendering/Materials/PLT/PLTCoatedOpaqueDielectricBSDF.slang
+    Rendering/Materials/PLT/PLTCoatedOpaqueDielectricMaterial.slang
+    Rendering/Materials/PLT/PLTDiffractionGratedConductorMaterial.cpp
+    Rendering/Materials/PLT/PLTDiffractionGratedConductorMaterial.h
+    Rendering/Materials/PLT/PLTDiffractionGratedConductorBSDF.slang
+    Rendering/Materials/PLT/PLTDiffractionGratedConductorMaterial.slang
+    Rendering/Materials/PLT/PLTDiffractionGratedOpaqueDielectricMaterial.cpp
+    Rendering/Materials/PLT/PLTDiffractionGratedOpaqueDielectricMaterial.h
+    Rendering/Materials/PLT/PLTDiffractionGratedOpaqueDielectricBSDF.slang
+    Rendering/Materials/PLT/PLTDiffractionGratedOpaqueDielectricMaterial.slang
+    Rendering/Materials/PLT/PLTMultiLayeredStackMaterial.cpp
+    Rendering/Materials/PLT/PLTMultiLayeredStackMaterial.h
+    Rendering/Materials/PLT/PLTMultiLayeredStackBSDF.slang
+    Rendering/Materials/PLT/PLTMultiLayeredStackMaterial.slang
 
     Rendering/RTXDI/EnvLightUpdater.cs.slang
     Rendering/RTXDI/LightUpdater.cs.slang
@@ -292,6 +300,8 @@ target_sources(Falcor PRIVATE
     Rendering/Utils/PixelStats.h
     Rendering/Utils/PixelStats.slang
     Rendering/Utils/PixelStatsShared.slang
+    Rendering/Utils/DifferentialShadingGeometry.slang
+    Rendering/Utils/LightsSamplingUtils.slang
 
     Rendering/Volumes/HomogeneousVolumeSampler.slang
     Rendering/Volumes/IPhaseFunction.slang
@@ -397,13 +407,9 @@ target_sources(Falcor PRIVATE
     Scene/Material/BasicMaterial.cpp
     Scene/Material/BasicMaterial.h
     Scene/Material/BasicMaterialData.slang
-    Scene/Material/ClothMaterial.cpp
-    Scene/Material/ClothMaterial.h
     Scene/Material/DiffuseSpecularData.slang
     Scene/Material/DiffuseSpecularUtils.cpp
     Scene/Material/DiffuseSpecularUtils.h
-    Scene/Material/HairMaterial.cpp
-    Scene/Material/HairMaterial.h
     Scene/Material/VolumeProperties.slang
     Scene/Material/Material.cpp
     Scene/Material/Material.h
@@ -417,39 +423,11 @@ target_sources(Falcor PRIVATE
     Scene/Material/MaterialTypeRegistry.cpp
     Scene/Material/MaterialTypeRegistry.h
     Scene/Material/MaterialTypes.slang
-    Scene/Material/MERLFile.cpp
-    Scene/Material/MERLFile.h
-    Scene/Material/MERLMaterial.cpp
-    Scene/Material/MERLMaterial.h
-    Scene/Material/MERLMaterialData.slang
-    Scene/Material/MERLMixMaterial.cpp
-    Scene/Material/MERLMixMaterial.h
-    Scene/Material/MERLMixMaterialData.slang
-    Scene/Material/RGLCommon.cpp
-    Scene/Material/RGLCommon.h
-    Scene/Material/RGLFile.cpp
-    Scene/Material/RGLFile.h
-    Scene/Material/RGLMaterial.cpp
-    Scene/Material/RGLMaterial.h
-    Scene/Material/RGLMaterialData.slang
     Scene/Material/ShadingUtils.slang
     Scene/Material/StandardMaterial.cpp
     Scene/Material/StandardMaterial.h
     Scene/Material/TextureHandle.slang
     Scene/Material/TextureSampler.slang
-
-    Scene/Material/PBRT/PBRTDiffuseMaterial.h
-    Scene/Material/PBRT/PBRTDiffuseMaterial.cpp
-    Scene/Material/PBRT/PBRTDiffuseTransmissionMaterial.h
-    Scene/Material/PBRT/PBRTDiffuseTransmissionMaterial.cpp
-    Scene/Material/PBRT/PBRTConductorMaterial.h
-    Scene/Material/PBRT/PBRTConductorMaterial.cpp
-    Scene/Material/PBRT/PBRTDielectricMaterial.h
-    Scene/Material/PBRT/PBRTDielectricMaterial.cpp
-    Scene/Material/PBRT/PBRTCoatedConductorMaterial.h
-    Scene/Material/PBRT/PBRTCoatedConductorMaterial.cpp
-    Scene/Material/PBRT/PBRTCoatedDiffuseMaterial.h
-    Scene/Material/PBRT/PBRTCoatedDiffuseMaterial.cpp
 
     Scene/SDFs/NormalizedDenseSDFGrid/NDSDFGrid.cpp
     Scene/SDFs/NormalizedDenseSDFGrid/NDSDFGrid.h
@@ -523,6 +501,7 @@ target_sources(Falcor PRIVATE
     Utils/CryptoUtils.cpp
     Utils/CryptoUtils.h
     Utils/HostDeviceShared.slangh
+    Utils/HWSS.slang
     Utils/InternalDictionary.h
     Utils/Logger.cpp
     Utils/Logger.h
@@ -566,6 +545,7 @@ target_sources(Falcor PRIVATE
     Utils/Color/SpectrumUtils.cpp
     Utils/Color/SpectrumUtils.h
     Utils/Color/SpectrumUtils.slang
+    Utils/Color/SpectrumSampler.slang
 
     Utils/Debug/DebugConsole.h
     Utils/Debug/PixelDebug.cpp

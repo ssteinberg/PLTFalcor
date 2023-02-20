@@ -63,6 +63,9 @@ public:
     bool isEnabled() const { return mEnabled; }
     void setEnabled(bool enabled);
 
+    uint32_t getMaxAccumulatedFrames() const { return mMaxFrameCount; }
+    void setMaxAccumulatedFrames(uint32_t v) { mMaxFrameCount=v; reset(); }
+
     // Scripting functions
     void reset();
 

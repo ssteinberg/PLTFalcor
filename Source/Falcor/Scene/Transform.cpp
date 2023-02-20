@@ -29,10 +29,20 @@
 #include "Utils/Scripting/ScriptBindings.h"
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/transform.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 
 namespace Falcor
 {
     Transform::Transform() {}
+
+    Transform::Transform(const glm::mat4& matrix)
+        : mDirty(false)
+        , mMatrix(rmcv::toRMCV(matrix))
+    {
+        float3 skew;
+        float4 perspective;
+        glm::decompose(matrix, mScaling, mRotation, mTranslation, skew, perspective);
+    }
 
     void Transform::setTranslation(const float3& translation)
     {

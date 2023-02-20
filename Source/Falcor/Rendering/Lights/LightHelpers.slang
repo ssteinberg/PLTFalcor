@@ -37,8 +37,11 @@
 
 #include "Utils/Math/MathConstants.slangh"
 
+import Scene.Scene;
 import Scene.Lights.LightData;
+import Utils.HWSS;
 import Utils.Math.MathHelpers;
+import Utils.Color.SpectrumUtils;
 import Utils.Sampling.SampleGeneratorInterface;
 
 static const float kMinLightDistSqr = 1e-9f;
@@ -56,7 +59,8 @@ struct AnalyticLightSample
     float3  normalW;        ///< Normal of the sampled point on the light source in world space (normalized).
     float3  dir;            ///< Direction from the shading point to the sampled point on the light in world space (normalized).
     float   distance;       ///< Distance from the shading point to sampled point on the light.
-    float3  Li;             ///< Incident radiance at the shading point (unshadowed). Note: Already divided by the pdf.
+    hwss_t  Li;             ///< Incident radiance at the shading point (unshadowed). Note: Already divided by the pdf.
+    hwss_t  wavelengths;    ///< Sampled wavelengths
     float   pdf;            ///< Probability density function with respect to solid angle at the shading point.
 };
 
@@ -64,7 +68,7 @@ struct AnalyticLightSample
     The input sample must already have posW and normalW computed.
     \return True if the sample is valid, false otherwise.
 */
-bool finalizeAreaLightSample(const float3 shadingPosW, const LightData light, inout AnalyticLightSample ls)
+bool finalizeAreaLightSample<S : ISampleGenerator>(const float3 shadingPosW, const LightData light, inout S sg, const float wavelength, bool importanceSampleSpectrum, inout AnalyticLightSample ls)
 {
     // Compute direction and distance to light.
     // The distance is clamped to a small epsilon to avoid div-by-zero below.
@@ -77,7 +81,9 @@ bool finalizeAreaLightSample(const float3 shadingPosW, const LightData light, in
     // The area lights are single-sided by default, so radiance is zero when seen from the back-facing side.
     float cosTheta = dot(ls.normalW, -ls.dir);
     if (cosTheta <= 0.f) return false;
-    ls.Li = light.intensity * (light.surfaceArea * cosTheta / distSqr);
+
+    ls.Li = gScene.sampleSpectrum(light.intensitySpectrumId, wavelength, sg, importanceSampleSpectrum, ls.wavelengths);
+    ls.Li *= light.surfaceArea * cosTheta / distSqr;
 
     // Compute the PDF with respect to solid angle. Note this may be +inf.
     ls.pdf = distSqr / (cosTheta * light.surfaceArea);
@@ -91,10 +97,11 @@ bool finalizeAreaLightSample(const float3 shadingPosW, const LightData light, in
     \param[out] ls Light sample struct.
     \return True if a sample was generated, false otherwise.
 */
-bool sampleRectAreaLight(const float3 shadingPosW, const LightData light, const float2 u, out AnalyticLightSample ls)
+bool sampleRectAreaLight<S : ISampleGenerator>(const float3 shadingPosW, const LightData light, inout S sg, const float wavelength, bool importanceSampleSpectrum, out AnalyticLightSample ls)
 {
     // Pick a random sample on the quad.
     // The quad is from (-1,-1,0) to (1,1,0) in object space, but may be scaled by its transform matrix.
+    const float2 u = sampleNext2D(sg);
     float3 pos = float3(u.x * 2.f - 1.f, u.y * 2.f - 1.f, 0.f);
 
     // Apply model to world transformation matrix.
@@ -104,7 +111,7 @@ bool sampleRectAreaLight(const float3 shadingPosW, const LightData light, const 
     // TODO: normalW is not correctly oriented for mesh instances that have flipped triangle winding.
     ls.normalW = normalize(mul(light.transMatIT, float4(0.f, 0.f, 1.f, 0.f)).xyz);
 
-    return finalizeAreaLightSample(shadingPosW, light, ls);
+    return finalizeAreaLightSample(shadingPosW, light, sg, wavelength, importanceSampleSpectrum, ls);
 }
 
 /** Samples a spherical area light source.
@@ -114,10 +121,11 @@ bool sampleRectAreaLight(const float3 shadingPosW, const LightData light, const 
     \param[out] ls Light sample struct.
     \return True if a sample was generated, false otherwise.
 */
-bool sampleSphereAreaLight(const float3 shadingPosW, const LightData light, const float2 u, out AnalyticLightSample ls)
+bool sampleSphereAreaLight<S : ISampleGenerator>(const float3 shadingPosW, const LightData light, inout S sg, const float wavelength, bool importanceSampleSpectrum, out AnalyticLightSample ls)
 {
     // Sample a random point on the sphere.
     // TODO: We should pick a random point on the hemisphere facing the shading point.
+    const float2 u = sampleNext2D(sg);
     float3 pos = sample_sphere(u);
 
     // Apply model to world transformation matrix.
@@ -126,7 +134,7 @@ bool sampleSphereAreaLight(const float3 shadingPosW, const LightData light, cons
     // Setup world space normal.
     ls.normalW = normalize(mul(light.transMatIT, float4(pos, 0.f)).xyz);
 
-    return finalizeAreaLightSample(shadingPosW, light, ls);
+    return finalizeAreaLightSample(shadingPosW, light, sg, wavelength, importanceSampleSpectrum, ls);
 }
 
 /** Samples disc area light source.
@@ -136,10 +144,11 @@ bool sampleSphereAreaLight(const float3 shadingPosW, const LightData light, cons
     \param[out] ls Light sample struct.
     \return True if a sample was generated, false otherwise.
 */
-bool sampleDiscAreaLight(const float3 shadingPosW, const LightData light, const float2 u, out AnalyticLightSample ls)
+bool sampleDiscAreaLight<S : ISampleGenerator>(const float3 shadingPosW, const LightData light, inout S sg, const float wavelength, bool importanceSampleSpectrum, out AnalyticLightSample ls)
 {
     // Sample a random point on the disk.
     // TODO: Fix spelling disagreement between disc vs disk.
+    const float2 u = sampleNext2D(sg);
     float3 pos = float3(sample_disk(u), 0.f);
 
     // Transform to world space.
@@ -148,7 +157,7 @@ bool sampleDiscAreaLight(const float3 shadingPosW, const LightData light, const 
     // Setup world space normal.
     ls.normalW = normalize(mul(light.transMatIT, float4(0.f, 0.f, 1.f, 0.f)).xyz);
 
-    return finalizeAreaLightSample(shadingPosW, light, ls);
+    return finalizeAreaLightSample(shadingPosW, light, sg, wavelength, importanceSampleSpectrum, ls);
 }
 
 /** Samples a distant light source.
@@ -158,12 +167,13 @@ bool sampleDiscAreaLight(const float3 shadingPosW, const LightData light, const 
     \param[out] ls Light sample struct.
     \return True if a sample was generated, false otherwise.
 */
-bool sampleDistantLight(const float3 shadingPosW, const LightData light, const float2 u, out AnalyticLightSample ls)
+bool sampleDistantLight<S : ISampleGenerator>(const float3 shadingPosW, const LightData light, inout S sg, const float wavelength, bool importanceSampleSpectrum, out AnalyticLightSample ls)
 {
-    // A distant light doesn't have a position. Just clear to zero.
-    ls.posW = float3(0.f, 0.f, 0.f);
+    // A distant light doesn't have a position. Set to inf.
+    ls.posW = float3(1.f/.0f);
 
     // Sample direction.
+    const float2 u = sampleNext2D(sg);
     float3 dir = sample_cone(u, light.cosSubtendedAngle);
 
     // Transform sampled direction to world space
@@ -176,7 +186,7 @@ bool sampleDistantLight(const float3 shadingPosW, const LightData light, const f
     // But because the angle is intended to affect penumbra size, but not
     // perceived brigthness, we treat intensity as radiance.
     float solidAngle = (float)M_2PI * (1.f - light.cosSubtendedAngle);
-    ls.Li = light.intensity;
+    ls.Li = gScene.sampleSpectrum(light.intensitySpectrumId, wavelength, sg, importanceSampleSpectrum, ls.wavelengths);
     ls.pdf = 1.f / solidAngle;
     return true;
 }
@@ -187,10 +197,10 @@ bool sampleDistantLight(const float3 shadingPosW, const LightData light, const f
     \param[out] ls Light sample struct.
     \return True if a sample was generated, false otherwise.
 */
-bool sampleDirectionalLight(const float3 shadingPosW, const LightData light, out AnalyticLightSample ls)
+bool sampleDirectionalLight<S : ISampleGenerator>(const float3 shadingPosW, const LightData light, inout S sg, const float wavelength, bool importanceSampleSpectrum, out AnalyticLightSample ls)
 {
-    // A directional light doesn't have a position. Just clear to zero.
-    ls.posW = float3(0, 0, 0);
+    // A distant light doesn't have a position. Set to inf.
+    ls.posW = float3(1.f/.0f);
 
     // For a directional light, the normal is always along its light direction.
     ls.normalW = light.dirW;
@@ -200,7 +210,7 @@ bool sampleDirectionalLight(const float3 shadingPosW, const LightData light, out
     ls.dir = -light.dirW;
 
     // Setup incident radiance. For directional lights there is no falloff or cosine term.
-    ls.Li = light.intensity;
+    ls.Li = gScene.sampleSpectrum(light.intensitySpectrumId, wavelength, sg, importanceSampleSpectrum, ls.wavelengths);
 
     // For a directional light, the PDF with respect to solid angle is a Dirac function. Set to zero.
     ls.pdf = 0.f;
@@ -214,7 +224,7 @@ bool sampleDirectionalLight(const float3 shadingPosW, const LightData light, out
     \param[out] ls Light sample struct.
     \return True if a sample was generated, false otherwise.
 */
-bool samplePointLight(const float3 shadingPosW, const LightData light, out AnalyticLightSample ls)
+bool samplePointLight<S : ISampleGenerator>(const float3 shadingPosW, const LightData light, inout S sg, const float wavelength, bool importanceSampleSpectrum, out AnalyticLightSample ls)
 {
     // Get the position and normal.
     ls.posW = light.posW;
@@ -241,7 +251,8 @@ bool samplePointLight(const float3 shadingPosW, const LightData light, out Analy
     }
 
     // Compute incident radiance at shading point.
-    ls.Li = light.intensity * falloff / distSqr;
+    ls.Li = gScene.sampleSpectrum(light.intensitySpectrumId, wavelength, sg, importanceSampleSpectrum, ls.wavelengths);
+    ls.Li *= falloff / distSqr;
 
     // For a point light, the PDF with respect to solid angle is a Dirac function. Set to zero.
     ls.pdf = 0.f;
@@ -257,48 +268,25 @@ bool samplePointLight(const float3 shadingPosW, const LightData light, out Analy
     \param[out] ls Sampled point on the light and associated sample data, only valid if true is returned.
     \return True if a sample was generated, false otherwise.
 */
-bool sampleLight<S : ISampleGenerator>(const float3 shadingPosW, const LightData light, inout S sg, out AnalyticLightSample ls)
+bool sampleLight<S : ISampleGenerator>(const float3 shadingPosW, const LightData light, inout S sg, const float wavelength, bool importanceSampleSpectrum, out AnalyticLightSample ls)
 {
     // Sample the light based on its type: point, directional, or area.
     switch (light.type)
     {
     case LightType::Point:
-        return samplePointLight(shadingPosW, light, ls);
+        return samplePointLight(shadingPosW, light, sg, wavelength, importanceSampleSpectrum, ls);
     case LightType::Directional:
-        return sampleDirectionalLight(shadingPosW, light, ls);
+        return sampleDirectionalLight(shadingPosW, light, sg, wavelength, importanceSampleSpectrum, ls);
     case LightType::Rect:
-        return sampleRectAreaLight(shadingPosW, light, sampleNext2D(sg), ls);
+        return sampleRectAreaLight(shadingPosW, light, sg, wavelength, importanceSampleSpectrum, ls);
     case LightType::Sphere:
-        return sampleSphereAreaLight(shadingPosW, light, sampleNext2D(sg), ls);
+        return sampleSphereAreaLight(shadingPosW, light, sg, wavelength, importanceSampleSpectrum, ls);
     case LightType::Disc:
-        return sampleDiscAreaLight(shadingPosW, light, sampleNext2D(sg), ls);
+        return sampleDiscAreaLight(shadingPosW, light, sg, wavelength, importanceSampleSpectrum, ls);
     case LightType::Distant:
-        return sampleDistantLight(shadingPosW, light, sampleNext2D(sg), ls);
+        return sampleDistantLight(shadingPosW, light, sg, wavelength, importanceSampleSpectrum, ls);
     default:
         ls = {};
         return false; // Should not happen
     }
-}
-
-/** Evaluates a light approximately. This is useful for raster passes that don't use stochastic integration.
-    For now only point and directional light sources are supported.
-    \param[in] shadingPosW Shading point in world space.
-    \param[in] light Light data.
-    \param[out] ls Sampled point on the light and associated sample data (zero initialized if no sample is generated).
-    \return True if a sample was generated, false otherwise.
-*/
-bool evalLightApproximate(const float3 shadingPosW, const LightData light, out AnalyticLightSample ls)
-{
-    ls = {};
-
-    switch (light.type)
-    {
-    case LightType::Point:
-        return samplePointLight(shadingPosW, light, ls);
-    case LightType::Directional:
-        return sampleDirectionalLight(shadingPosW, light, ls);
-    }
-
-    // All other light types are not supported.
-    return false;
 }

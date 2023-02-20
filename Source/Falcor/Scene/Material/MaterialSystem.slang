@@ -25,6 +25,8 @@
  # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
+
+import Scene.Material.ShadingUtils;
 import Scene.Material.TextureHandle;
 import Scene.Material.TextureSampler;
 import Rendering.Volumes.PhaseFunction;
@@ -32,6 +34,8 @@ import Utils.SlangUtils;
 __exported import Scene.SceneTypes;
 __exported import Scene.Displacement.DisplacementData;
 __exported import Scene.Material.BasicMaterialData;
+import Utils.Color.SpectrumUtils;
+import Utils.HWSS;
 __exported import Scene.Material.VolumeProperties;
 
 #if !defined(MATERIAL_SYSTEM_TEXTURE_DESC_COUNT) || !defined(MATERIAL_SYSTEM_SAMPLER_DESC_COUNT) || !defined(MATERIAL_SYSTEM_BUFFER_DESC_COUNT)
@@ -175,27 +179,6 @@ struct MaterialSystem
             return getResolvedTextureHandle(md.texEmissive).getMode() == TextureHandle::Mode::Texture;
         }
         return false;
-    }
-
-    /** Evaluates the outgoing radiance on a given material.
-        This function samples the emissive texture if its textured.
-        Note the caller check the facing status themselves to discard back-facing hits.
-        \param[in] materialID Material ID
-        \param[in] uv Texture coordinates
-        \return Evaluated outgoing radiance on the front-facing side.
-    */
-    float3 evalEmissive(const uint materialID, const float2 uv)
-    {
-        // This function only handle basic materials for now. Other material types return zero.
-        // TODO: Generalize to support arbitrary materials (#1314).
-        if (isBasicMaterial(materialID))
-        {
-            BasicMaterialData md = getBasicMaterialData(materialID);
-            SamplerState s = getDefaultTextureSampler(materialID);
-            ExplicitLodTextureSampler lod = { 0.f };
-            return sampleTexture(md.texEmissive, s, uv, float4(md.emissive, 1.f), lod).rgb * md.emissiveFactor;
-        }
-        return float3(0.f);
     }
 
     /** Evaluates the index of refraction of the medium inside the given material.

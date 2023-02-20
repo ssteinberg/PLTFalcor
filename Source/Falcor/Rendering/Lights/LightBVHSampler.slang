@@ -28,6 +28,8 @@
 #include "Utils/Math/MathConstants.slangh"
 
 import Scene.Scene;
+import Scene.ShadingData;
+import Utils.HWSS;
 import Utils.Math.MathHelpers;
 import Utils.Geometry.GeometryHelpers;
 import Utils.Sampling.SampleGeneratorInterface;
@@ -72,7 +74,7 @@ struct LightBVHSampler : IEmissiveLightSampler
         \param[out] ls Light sample. Only valid if true is returned.
         \return True if a sample was generated, false otherwise.
     */
-    bool sampleLight<S : ISampleGenerator>(const float3 posW, const float3 normalW, const bool upperHemisphere, inout S sg, out TriangleLightSample ls)
+    bool sampleLight<S : ISampleGenerator>(const float3 posW, const float3 normalW, const bool upperHemisphere, inout S sg, const float wavelength, bool importanceSampleSpectrum, out TriangleLightSample ls)
     {
         if (gScene.lightCollection.isEmpty()) return false;
 
@@ -84,7 +86,7 @@ struct LightBVHSampler : IEmissiveLightSampler
 
         // Sample a point on the triangle uniformly.
         float2 u = sampleNext2D(sg);
-        if (!sampleTriangle(posW, triangleIndex, u, ls)) return false;
+        if (!sampleTriangle(posW, triangleIndex, u, wavelength, importanceSampleSpectrum, sg, ls)) return false;
 
         // The final probability density is the product of the sampling probabilities.
         ls.pdf *= trianglePdf;
@@ -98,7 +100,7 @@ struct LightBVHSampler : IEmissiveLightSampler
         \param[in] triangleIndex Index of selected triangle.
         \return Probability of drawing the input triangle
     */
-    float evalTriangleSelectionPdf(const float3 posW, const float3 normalW, const bool upperHemisphere, const uint triangleIndex)
+    hwss_t evalTriangleSelectionPdf(const float3 posW, const float3 normalW, const bool upperHemisphere, const uint triangleIndex)
     {
         if (triangleIndex == LightCollection::kInvalidIndex) return 0.f;
 
@@ -129,14 +131,14 @@ struct LightBVHSampler : IEmissiveLightSampler
         \param[in] hit Triangle hit data.
         \return Probability density with respect to solid angle at the shading point.
     */
-    float evalPdf(const float3 posW, const float3 normalW, const bool upperHemisphere, const TriangleLightHit hit)
+    hwss_t evalPdf(const float3 posW, const float3 normalW, const bool upperHemisphere, const TriangleLightHit hit)
     {
         if (hit.triangleIndex == LightCollection::kInvalidIndex) return 0.f;
 
-        float triangleSelectionPdf = evalTriangleSelectionPdf(posW, normalW, upperHemisphere, hit.triangleIndex);
+        hwss_t triangleSelectionPdf = evalTriangleSelectionPdf(posW, normalW, upperHemisphere, hit.triangleIndex);
 
         // Compute triangle sampling probability with respect to solid angle from the shading point.
-        float trianglePdf = evalTrianglePdf(posW, hit);
+        hwss_t trianglePdf = evalTrianglePdf(posW, hit);
 
         // The final probability density is the product of the sampling probabilities.
         return triangleSelectionPdf * trianglePdf;

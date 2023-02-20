@@ -41,8 +41,8 @@ enum class AlbedoSelection : uint32_t
     ShowAlbedo = 0x1,
     DiffuseReflection = 0x2,
     DiffuseTransmission = 0x4,
-    SpecularReflection = 0x8,
-    SpecularTransmission = 0x10,
+    ScatterReflection = 0x8,
+    ScatterTransmission = 0x10,
 };
 
 /** BSDFViewer parameters shared between host and device.

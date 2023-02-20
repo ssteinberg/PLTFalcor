@@ -1,0 +1,21 @@
+
+#pragma once
+#include "Utils/HostDeviceShared.slangh"
+
+enum class DebugViewType : uint32_t {
+    none = 0,
+    nans,
+    inf,
+    path_length,
+    hwss_comps,
+    normals,
+    albedo,
+    roughness,
+    UVs,
+    coherence_area,
+    coherence_anisotropy,
+    polarization,
+    mnee_iterations,
+    mnee_bounces,
+};
+

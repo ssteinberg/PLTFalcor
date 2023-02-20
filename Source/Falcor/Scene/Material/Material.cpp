@@ -43,7 +43,7 @@ namespace Falcor
         static_assert(sizeof(MaterialDataBlob) == 128);
         static_assert(static_cast<uint32_t>(MaterialType::BuiltinCount) <= (1u << MaterialHeader::kMaterialTypeBits), "MaterialType count exceeds the maximum");
         static_assert(static_cast<uint32_t>(AlphaMode::Count) <= (1u << MaterialHeader::kAlphaModeBits), "AlphaMode bit count exceeds the maximum");
-        static_assert(static_cast<uint32_t>(LobeType::All) < (1u << MaterialHeader::kLobeTypeBits), "LobeType bit count exceeds the maximum");
+        static_assert(static_cast<uint32_t>(LobeType::ClientSide) < (1u << MaterialHeader::kLobeTypeBits), "LobeType bit count exceeds the maximum");
         static_assert(static_cast<uint32_t>(TextureHandle::Mode::Count) <= (1u << TextureHandle::kModeBits), "TextureHandle::Mode bit count exceeds the maximum");
         static_assert(MaterialHeader::kTotalHeaderBitsX <= 32, "MaterialHeader bit count x exceeds the maximum");
         static_assert(MaterialHeader::kTotalHeaderBitsY <= 32, "MaterialHeader bit count y exceeds the maximum");
@@ -62,10 +62,10 @@ namespace Falcor
         mHeader.setMaterialType(type);
         mHeader.setAlphaMode(AlphaMode::Opaque);
         mHeader.setAlphaThreshold(float16_t(0.5f));
-        mHeader.setActiveLobes(static_cast<uint32_t>(LobeType::All));
+        mHeader.setActiveLobes(static_cast<uint32_t>(LobeType::ClientSide));
     }
 
-    bool Material::renderUI(Gui::Widgets& widget)
+    bool Material::renderUI(Gui::Widgets& widget, const Scene *scene)
     {
         // We're re-using the material's update flags here to track changes.
         // Cache the previous flag so we can restore it before returning.
@@ -335,17 +335,16 @@ namespace Falcor
 
         pybind11::enum_<MaterialType> materialType(m, "MaterialType");
         materialType.value("Standard", MaterialType::Standard);
-        materialType.value("Cloth", MaterialType::Cloth);
-        materialType.value("Hair", MaterialType::Hair);
-        materialType.value("MERL", MaterialType::MERL);
-        materialType.value("MERLMix", MaterialType::MERLMix);
-        materialType.value("PBRTDiffuse", MaterialType::PBRTDiffuse);
-        materialType.value("PBRTDiffuseTransmission", MaterialType::PBRTDiffuseTransmission);
-        materialType.value("PBRTConductor", MaterialType::PBRTConductor);
-        materialType.value("PBRTDielectric", MaterialType::PBRTDielectric);
-        materialType.value("PBRTCoatedConductor", MaterialType::PBRTCoatedConductor);
-        materialType.value("PBRTCoatedDiffuse", MaterialType::PBRTCoatedDiffuse);
-        materialType.value("RGL", MaterialType::RGL);
+        materialType.value("PLTDiffuse", MaterialType::PLTDiffuse);
+        materialType.value("PLTConductor", MaterialType::PLTConductor);
+        materialType.value("PLTDielectric", MaterialType::PLTDielectric);
+        materialType.value("PLTOpaqueDielectric", MaterialType::PLTOpaqueDielectric);
+        materialType.value("PLTThinDielectric", MaterialType::PLTThinDielectric);
+        materialType.value("PLTCoatedConductor", MaterialType::PLTCoatedConductor);
+        materialType.value("PLTCoatedOpaqueDielectric", MaterialType::PLTCoatedOpaqueDielectric);
+        materialType.value("PLTDiffractionGratedConductor", MaterialType::PLTDiffractionGratedConductor);
+        materialType.value("PLTDiffractionGratedOpaqueDielectric", MaterialType::PLTDiffractionGratedOpaqueDielectric);
+        materialType.value("PLTMultiLayeredStack", MaterialType::PLTMultiLayeredStack);
 
         pybind11::enum_<AlphaMode> alphaMode(m, "AlphaMode");
         alphaMode.value("Opaque", AlphaMode::Opaque);
@@ -359,6 +358,8 @@ namespace Falcor
         textureSlot.value("Transmission", Material::TextureSlot::Transmission);
         textureSlot.value("Displacement", Material::TextureSlot::Displacement);
         textureSlot.value("Index", Material::TextureSlot::Index);
+        textureSlot.value("Data1", Material::TextureSlot::Data1);
+        textureSlot.value("Data2", Material::TextureSlot::Data2);
 
         // Register Material base class as IMaterial in python to allow deprecated script syntax.
         // TODO: Remove workaround when all scripts have been updated to create derived Material classes.

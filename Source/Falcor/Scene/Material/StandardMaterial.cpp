@@ -30,6 +30,18 @@
 #include "Utils/Scripting/ScriptBindings.h"
 #include "Scene/SceneBuilderAccess.h"
 
+#include "Scene/SceneBuilder.h"
+
+#include "Rendering/Materials/PLT/PLTDiffuseMaterial.h"
+#include "Rendering/Materials/PLT/PLTConductorMaterial.h"
+#include "Rendering/Materials/PLT/PLTDielectricMaterial.h"
+#include "Rendering/Materials/PLT/PLTOpaqueDielectricMaterial.h"
+#include "Rendering/Materials/PLT/PLTThinDielectricMaterial.h"
+#include "Rendering/Materials/PLT/PLTCoatedConductorMaterial.h"
+#include "Rendering/Materials/PLT/PLTCoatedOpaqueDielectricMaterial.h"
+#include "Rendering/Materials/PLT/PLTDiffractionGratedConductorMaterial.h"
+#include "Rendering/Materials/PLT/PLTDiffractionGratedOpaqueDielectricMaterial.h"
+
 namespace Falcor
 {
     namespace
@@ -56,12 +68,12 @@ namespace Falcor
         mTextureSlotInfo[(uint32_t)TextureSlot::Transmission] = { "transmission", TextureChannelFlags::RGB, true };
     }
 
-    bool StandardMaterial::renderUI(Gui::Widgets& widget)
+    bool StandardMaterial::renderUI(Gui::Widgets& widget, const Scene *scene)
     {
         widget.text("Shading model: " + to_string(getShadingModel()));
 
         // Render the base class UI first.
-        bool changed = BasicMaterial::renderUI(widget);
+        bool changed = BasicMaterial::renderUI(widget, scene);
 
         // We're re-using the material's update flags here to track changes.
         // Cache the previous flag so we can restore it before returning.
@@ -75,14 +87,6 @@ namespace Falcor
             widget.image("Emissive color", pTexture, float2(100.f));
             if (widget.button("Remove texture##Emissive")) setEmissiveTexture(nullptr);
         }
-        else
-        {
-            float3 emissiveColor = getEmissiveColor();
-            if (widget.var("Emissive color", emissiveColor, 0.f, 1.f, 0.01f)) setEmissiveColor(emissiveColor);
-        }
-
-        float emissiveFactor = getEmissiveFactor();
-        if (widget.var("Emissive factor", emissiveFactor, 0.f, std::numeric_limits<float>::max(), 0.01f)) setEmissiveFactor(emissiveFactor);
 
         // Restore update flags.
         changed |= mUpdates != UpdateFlags::None;
@@ -178,27 +182,6 @@ namespace Falcor
         {
             mData.specular[2] = (float16_t)metallic;
             markUpdates(UpdateFlags::DataChanged);
-            updateDeltaSpecularFlag();
-        }
-    }
-
-    void StandardMaterial::setEmissiveColor(const float3& color)
-    {
-        if (mData.emissive != color)
-        {
-            mData.emissive = color;
-            markUpdates(UpdateFlags::DataChanged);
-            updateEmissiveFlag();
-        }
-    }
-
-    void StandardMaterial::setEmissiveFactor(float factor)
-    {
-        if (mData.emissiveFactor != factor)
-        {
-            mData.emissiveFactor = factor;
-            markUpdates(UpdateFlags::DataChanged);
-            updateEmissiveFlag();
         }
     }
 
@@ -221,12 +204,100 @@ namespace Falcor
 
         material.def_property("roughness", &StandardMaterial::getRoughness, &StandardMaterial::setRoughness);
         material.def_property("metallic", &StandardMaterial::getMetallic, &StandardMaterial::setMetallic);
-        material.def_property("emissiveColor", &StandardMaterial::getEmissiveColor, &StandardMaterial::setEmissiveColor);
-        material.def_property("emissiveFactor", &StandardMaterial::getEmissiveFactor, &StandardMaterial::setEmissiveFactor);
         material.def_property_readonly("shadingModel", &StandardMaterial::getShadingModel);
 
         // Register alias Material -> StandardMaterial to allow deprecated script syntax.
         // TODO: Remove workaround when all scripts have been updated to create StandardMaterial directly.
-        m.attr("Material") = m.attr("StandardMaterial"); // PYTHONDEPRECATED
+        //m.attr("Material") = m.attr("StandardMaterial"); // PYTHONDEPRECATED
+    }
+
+
+    StandardMaterialPLTWrapper::SharedPtr StandardMaterialPLTWrapper::create(std::string name) {
+        return SharedPtr(new StandardMaterialPLTWrapper(std::move(name)));
+    }
+
+    Material::SharedPtr StandardMaterialPLTWrapper::genMaterial(SceneBuilder *builder) const {
+        const bool isMetal = metalName.length()>0;
+        const bool isDiffuse = this->isDiffuse;
+
+        Material::SharedPtr material;
+        if (isMetal) {
+            auto mat = PLTConductorMaterial::create(builder->getDevice(), name);
+            mat->setTextureTransform(textureTransform);
+
+            mat->setBaseColor(baseColor);
+            mat->setSpecularParams(specularParams);
+            mat->setDoubleSided(doubleSided);
+            mat->setIORSpectralProfile(builder->addSpectralProfileFromMaterial(metalName));
+            mat->setExtIndexOfRefraction(1.f);
+            mat->setGamma(3.f);
+
+            material = std::move(mat);
+        } else if (isDiffuse) {
+            auto mat = PLTDiffuseMaterial::create(builder->getDevice(), name);
+            mat->setTextureTransform(textureTransform);
+
+            mat->setBaseColor(baseColor);
+            mat->setDoubleSided(doubleSided);
+
+            material = std::move(mat);
+        } else if (specularTransmission<.01f) {
+            auto mat = PLTOpaqueDielectricMaterial::create(builder->getDevice(), name);
+            mat->setTextureTransform(textureTransform);
+
+            mat->setBaseColor(float4{ 1.f });
+            mat->setSpecularParams(specularParams);
+            mat->setDoubleSided(doubleSided);
+            mat->setIndexOfRefraction(std::max(1.1f, indexOfRefraction));
+            mat->setSpecularParams(specularParams);
+
+            material = std::move(mat);
+        } else {
+            auto mat = PLTDielectricMaterial::create(builder->getDevice(), name);
+            mat->setTextureTransform(textureTransform);
+
+            mat->setBaseColor(float4{ 1.f });
+            mat->setSpecularParams(specularParams);
+            mat->setTransmissionColor(specularTransmission * transmissionColor);
+            mat->setDoubleSided(false);
+            mat->setIndexOfRefraction(std::max(1.1f, indexOfRefraction));
+            mat->setSpecularParams(specularParams);
+            mat->setAbbeNumber(80.f);
+            mat->setExtIndexOfRefraction(1.f);
+
+            material = std::move(mat);
+        }
+
+        if (material) {
+            for (const auto &tex : textures)
+                material->loadTexture(tex.first, tex.second, tex.first==Material::TextureSlot::BaseColor);
+        }
+
+        return material;
+    }
+
+    FALCOR_SCRIPT_BINDING(StandardMaterialPLTWrapper)
+    {
+        using namespace pybind11::literals;
+
+        pybind11::class_<StandardMaterialPLTWrapper, StandardMaterialPLTWrapper::SharedPtr> material(m, "StandardMaterialPLTWrapper");
+        material.def(pybind11::init(&StandardMaterialPLTWrapper::create), "name"_a = "");
+
+        material.def_readwrite("name", &StandardMaterialPLTWrapper::name);
+        material.def_readwrite("indexOfRefraction", &StandardMaterialPLTWrapper::indexOfRefraction);
+        material.def_readwrite("specularTransmission", &StandardMaterialPLTWrapper::specularTransmission);
+        material.def_readwrite("baseColor", &StandardMaterialPLTWrapper::baseColor);
+        material.def_readwrite("specularParams", &StandardMaterialPLTWrapper::specularParams);
+        material.def_readwrite("volumeScattering", &StandardMaterialPLTWrapper::volumeScattering);
+        material.def_readwrite("volumeAbsorption", &StandardMaterialPLTWrapper::volumeAbsorption);
+        material.def_readwrite("transmissionColor", &StandardMaterialPLTWrapper::transmissionColor);
+        material.def_readwrite("alphaThreshold", &StandardMaterialPLTWrapper::alphaThreshold);
+        material.def_readwrite("doubleSided", &StandardMaterialPLTWrapper::doubleSided);
+        material.def_readwrite("metalName", &StandardMaterialPLTWrapper::metalName);
+        material.def_readwrite("isDiffuse", &StandardMaterialPLTWrapper::isDiffuse);
+
+        material.def_readwrite("textureTransform", &StandardMaterialPLTWrapper::textureTransform);
+
+        m.attr("Material") = m.attr("StandardMaterialPLTWrapper"); // PYTHONDEPRECATED
     }
 }

@@ -1083,7 +1083,8 @@ Material::SharedPtr PreviewSurfaceConverter::convert(
     }
     else
     {
-        pMaterial->setEmissiveColor(spec.emission.uniformValue);
+        // TODO: Handle
+        //pMaterial->setEmissiveColor(spec.emission.uniformValue);
     }
 
     if (spec.emission.textureScale != glm::float4(1.f, 1.f, 1.f, 1.f))
@@ -1098,7 +1099,8 @@ Material::SharedPtr PreviewSurfaceConverter::convert(
                 shader.GetPath().GetString()
             );
         }
-        pMaterial->setEmissiveFactor(spec.emission.textureScale.x);
+        // TODO: Handle
+        //pMaterial->setEmissiveFactor(spec.emission.textureScale.x);
     }
 
     if (displacementTexture)

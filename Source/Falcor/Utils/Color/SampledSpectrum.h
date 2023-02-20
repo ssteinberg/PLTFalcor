@@ -30,8 +30,11 @@
 #include "Core/Errors.h"
 #include "Utils/Math/Common.h"
 #include "Utils/Math/Vector.h"
+#include "Spectrum.h"
 #include <type_traits>
 #include <vector>
+#include <algorithm>
+#include <numeric>
 #include <cmath>
 
 namespace Falcor
@@ -55,6 +58,27 @@ namespace Falcor
     public:
         using value_type = T;
         static_assert(std::is_floating_point_v<T> || std::is_same_v<T, float2> || std::is_same_v<T, float3> || std::is_same_v<T, float4>, "T must be a floating point scalar or vector");
+
+        /** Create a spectrum from a piecewise linear spectrum
+        */
+        SampledSpectrum(const PiecewiseLinearSpectrum& pls, float lambdaBinMinSize = 5.f)
+            : mLambdaStart(pls.getWavelengthRange().x)
+            , mLambdaEnd(pls.getWavelengthRange().y)
+        {
+            const auto binSize = std::max(lambdaBinMinSize, pls.getWavelengthLeastBinSize()/2.f);
+            mSamples.resize(std::max<std::size_t>(1,
+                std::size_t((mLambdaEnd-mLambdaStart)/float(binSize)+.5f)));
+            for (std::size_t idx=0;idx<mSamples.size();++idx) {
+                mSamples[idx] = pls.eval(mLambdaStart + (mLambdaEnd-mLambdaStart)/float(mSamples.size()-1)*idx);
+            }
+        }
+
+        SampledSpectrum() : SampledSpectrum(SpectrumConstants::minWavelength, SpectrumConstants::maxWavelength,1) {}
+
+        SampledSpectrum(T val) : SampledSpectrum()
+        {
+            setAll(val);
+        }
 
         /** Create a spectrum initialized to zero.
             \param[in] lambdaStart First sampled wavelength in nm.
@@ -82,6 +106,12 @@ namespace Falcor
             set(sampleCount, pSamples);
         }
 
+        SampledSpectrum(float lambdaStart, float lambdaEnd, std::vector<value_type> vals)
+            : mLambdaStart(lambdaStart)
+            , mLambdaEnd(lambdaEnd)
+            , mSamples(std::move(vals))
+        {}
+
         /** Set spectrum samples.
             \param[in] sampleCount Size of array in samples.
             \param[in] pSamples Array of spectral samples.
@@ -96,10 +126,10 @@ namespace Falcor
         /** Set spectrum samples.
             \param[in] samples Spectral samples.
         */
-        void set(const std::vector<value_type>& samples)
+        void set(std::vector<value_type> samples)
         {
             checkArgument(samples.size() == mSamples.size(), "Sample count mismatch.");
-            mSamples = samples;
+            mSamples = std::move(samples);
         }
 
         /** Set spectrum from unsorted spectral data.
@@ -145,6 +175,14 @@ namespace Falcor
             return mSamples.size();
         }
 
+        /** Return the sample buffer.
+            \return The sample buffer.
+        */
+        const auto& get() const
+        {
+            return mSamples;
+        }
+
         /** Return the sample with index.
             \param[in] index Index to the sample that is wanted.
             \return The sample.
@@ -165,12 +203,90 @@ namespace Falcor
             mSamples[index] = value;
         }
 
+        void setAll(T value)
+        {
+            for (auto &v : mSamples)
+                v = value;
+        }
+
+        void scale(T value)
+        {
+            std::for_each(mSamples.begin(), mSamples.end(),
+                          [=](T& v) { v *= value; });
+        }
+
+        auto sum() const
+        {
+            return std::accumulate(mSamples.begin(), mSamples.end(), T(0));
+        }
+        auto avg() const
+        {
+            return sum() / mSamples.size();
+        }
+
+        void normalize()
+        {
+            const auto n = avg();
+            if (n>T(0))
+                scale(T(1)/n);
+        }
+
         /** Return the wavelength range.
             \return The wavelength range of the spectrum.
         */
         float2 getWavelengthRange() const
         {
             return float2(mLambdaStart, mLambdaEnd);
+        }
+
+        auto getMaxValue() const {
+            value_type m = std::numeric_limits<value_type>::min();
+            for (const auto& v : mSamples)
+                m = std::max(m, v);
+            return m;
+        }
+
+        auto& operator[](std::size_t idx) { return mSamples[idx]; }
+        const auto& operator[](std::size_t idx) const { return mSamples[idx]; }
+
+        auto& operator+=(const SampledSpectrum<value_type>& rhs) {
+            checkArgument(size()==rhs.size(), "Size mismatch.");
+            for (std::size_t idx = 0; idx < size(); ++idx)
+                mSamples[idx] += rhs[idx];
+            return *this;
+        }
+        auto& operator*=(const SampledSpectrum<value_type>& rhs) {
+            checkArgument(size()==rhs.size(), "Size mismatch.");
+            for (std::size_t idx = 0; idx < size(); ++idx)
+                mSamples[idx] *= rhs[idx];
+            return *this;
+        }
+        auto& operator/=(const SampledSpectrum<value_type>& rhs) {
+            checkArgument(size()==rhs.size(), "Size mismatch.");
+            for (std::size_t idx = 0; idx < size(); ++idx)
+                mSamples[idx] /= rhs[idx];
+            return *this;
+        }
+        auto& operator*=(const T& rhs) {
+            for (auto& v : mSamples)
+                v *= rhs;
+            return *this;
+        }
+        auto& operator/=(const T& rhs) {
+            for (auto& v : mSamples)
+                v /= rhs;
+            return *this;
+        }
+        bool operator==(const SampledSpectrum<value_type>& rhs) const {
+            if (mLambdaStart != rhs.mLambdaStart || mLambdaEnd != rhs.mLambdaEnd || size()!=rhs.size())
+                return false;
+            for (std::size_t idx = 0; idx < size(); ++idx)
+                if (get()[idx] != rhs.get()[idx])
+                    return false;
+            return true;
+        }
+        bool operator!=(const SampledSpectrum<value_type>& rhs) const {
+            return !((*this) == rhs);
         }
 
     private:
@@ -199,4 +315,5 @@ namespace Falcor
         float w = x - (float)i;
         return lerp(mSamples[i], mSamples[i + 1], T(w));
     }
+
 }

@@ -25,7 +25,7 @@
  # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
-import Rendering.Materials.IBSDF;
+import Rendering.Materials.BxDF;
 import Scene.ShadingData;
 import Scene.SceneTypes;
 import Scene.Material.MaterialTypes;

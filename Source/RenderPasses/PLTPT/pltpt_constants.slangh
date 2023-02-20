@@ -1,0 +1,55 @@
+
+#pragma once
+
+#ifndef MAX_BOUNCES
+#define MAX_BOUNCES 8
+#endif
+
+#ifndef HWSS_MIS
+#define HWSS_MIS true
+#endif
+
+#ifndef DO_DEBUG_VIEW
+#define DO_DEBUG_VIEW false
+#endif
+#ifndef DEBUG_VIEW_TYPE
+#define DEBUG_VIEW_TYPE 0
+#endif
+
+#ifndef USE_DIRECT_LIGHTS
+#define USE_DIRECT_LIGHTS true
+#endif
+#ifndef USE_EMISSIVE_LIGHTS
+#define USE_EMISSIVE_LIGHTS true
+#endif
+#ifndef USE_ENV_LIGHT
+#define USE_ENV_LIGHT true
+#endif
+#ifndef USE_ANALYTIC_LIGHTS
+#define USE_ANALYTIC_LIGHTS true
+#endif
+
+#ifndef ALPHA_MASKING
+#define ALPHA_MASKING true
+#endif
+
+#ifndef DO_IMPORTANCE_SAMPLING_EMITTERS
+#define DO_IMPORTANCE_SAMPLING_EMITTERS true
+#endif
+
+#ifndef DO_NEE
+#define DO_NEE true
+#endif
+#ifndef DO_MNEE
+#define DO_MNEE true
+#endif
+#ifndef DO_MIS
+#define DO_MIS true
+#endif
+#ifndef DO_RUSSIAN_ROULETTE
+#define DO_RUSSIAN_ROULETTE true
+#endif
+
+#ifndef NEE_USE_PER_TILE_SG_SELECTOR
+#define NEE_USE_PER_TILE_SG_SELECTOR true
+#endif

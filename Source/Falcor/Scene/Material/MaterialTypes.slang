@@ -38,17 +38,17 @@ enum class MaterialType // : uint32_t
     Unknown,    ///< Unknown material type, e.g. type is not yet registered.
 
     Standard,
-    Cloth,
-    Hair,
-    MERL,
-    MERLMix,
-    PBRTDiffuse,
-    PBRTDiffuseTransmission,
-    PBRTConductor,
-    PBRTDielectric,
-    PBRTCoatedConductor,
-    PBRTCoatedDiffuse,
-    RGL,
+    PLTDiffuse,
+    PLTConductor,
+    PLTDielectric,
+    PLTOpaqueDielectric,
+    PLTThinDielectric,
+    PLTCoatedConductor,
+    PLTCoatedOpaqueDielectric,
+    PLTDiffractionGratedConductor,
+    PLTDiffractionGratedOpaqueDielectric,
+    PLTMultiLayeredStack,
+
     BuiltinCount // Must be last
 };
 

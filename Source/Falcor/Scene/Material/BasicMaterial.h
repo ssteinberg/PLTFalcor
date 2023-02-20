@@ -44,12 +44,20 @@ namespace Falcor
     class FALCOR_API BasicMaterial : public Material
     {
     public:
+        struct UIHelpers {
+            static constexpr std::size_t grapher_bins = 128;
+            static float grapher(void* ptr, std::int32_t idx) {
+                const auto& profile = *(const SpectralProfile*)ptr;
+                return profile.pdf[(std::size_t)clamp(idx / float(grapher_bins - 1) * profile.bins, .0f, profile.bins - .5f)];
+            }
+        };
+
         using SharedPtr = std::shared_ptr<BasicMaterial>;
 
         /** Render the UI.
             \return True if the material was modified.
         */
-        virtual bool renderUI(Gui::Widgets& widget) override;
+        virtual bool renderUI(Gui::Widgets& widget, const Scene *scene) override;
 
         /** Update material. This prepares the material for rendering.
             \param[in] pOwner The material system that this material is used with.
@@ -114,6 +122,11 @@ namespace Falcor
         */
         Texture::SharedPtr getBaseColorTexture() const { return getTexture(TextureSlot::BaseColor); }
 
+        void setData1Texture(const Texture::SharedPtr& pTex) { setTexture(TextureSlot::Data1, pTex); }
+        void setData2Texture(const Texture::SharedPtr& pTex) { setTexture(TextureSlot::Data2, pTex); }
+        Texture::SharedPtr getData1Texture() const { return getTexture(TextureSlot::Data1); }
+        Texture::SharedPtr getData2Texture() const { return getTexture(TextureSlot::Data2); }
+
         /** Set the specular texture.
         */
         void setSpecularTexture(const Texture::SharedPtr& pSpecular) { setTexture(TextureSlot::Specular, pSpecular); }
@@ -177,6 +190,11 @@ namespace Falcor
         /** Get the base color.
         */
         float4 getBaseColor() const { return (float4)mData.baseColor; }
+
+        void setData1(const float4& data1);
+        float4 getData1() const { return (float4)mData.data1; }
+        void setData2(const float4& data2);
+        float4 getData2() const { return (float4)mData.data2; }
 
         /** Set the specular parameters.
         */
@@ -246,6 +264,14 @@ namespace Falcor
         */
         float getIndexOfRefraction() const { return (float)mData.IoR; }
 
+        virtual void setEmissionSpectralProfile(bool emissive, SpectralProfileID id);
+        virtual SpectralProfileID getEmissionSpectralProfile() const { return SpectralProfileID(mData.emissionSpectralId); }
+        bool isEmissive() const { return getEmissionSpectralProfile() != SpectralProfileID(BasicMaterialData::no_spectral_profile); }
+
+        // Sets complex IOR spectral data
+        virtual void setIORSpectralProfile(std::pair<SpectralProfileID, SpectralProfileID> ior);
+        virtual std::pair<SpectralProfileID,SpectralProfileID> getIORSpectralProfile() const { return std::make_pair(SpectralProfileID(mData.iorNSpectralId), SpectralProfileID(mData.iorKSpectralId)); }
+
         /** Returns the material data struct.
         */
         const BasicMaterialData& getData() const { return mData; }
@@ -267,7 +293,6 @@ namespace Falcor
         virtual void updateDeltaSpecularFlag() {}
 
         virtual void renderSpecularUI(Gui::Widgets& widget) {}
-        virtual void setEmissiveColor(const float3& color) {}
 
         BasicMaterialData mData;                    ///< Material parameters.
 

@@ -38,12 +38,22 @@
 
 namespace Falcor
 {
+    namespace SpectrumConstants {
+        static constexpr float minWavelength = 380.0f;
+        static constexpr float maxWavelength = 720.0f;
+    }
+
     /** Represents a piecewise linearly interpolated spectrum.
         Stores wavelengths (in increasing order) and a value for each wavelength.
     */
     class FALCOR_API PiecewiseLinearSpectrum
     {
     public:
+        /** Create a spectrum.
+            \param[in] uniform Uniform spectrum value
+        */
+        PiecewiseLinearSpectrum(float uniform);
+
         /** Create a spectrum.
             \param[in] wavelengths Wavelengths in nm.
             \param[in] values Values.
@@ -63,7 +73,7 @@ namespace Falcor
             \param[in] path File path.
             \return The spectrum.
         */
-        static std::optional<PiecewiseLinearSpectrum> fromFile(const std::filesystem::path& path);
+        static PiecewiseLinearSpectrum fromFile(const std::filesystem::path& path);
 
         /** Scale all values of the spectrum by a constant.
             \param[in] factor Scaling factor.
@@ -103,6 +113,15 @@ namespace Falcor
             return { mWavelengths.front(), mWavelengths.back() };
         }
 
+        float getWavelengthLeastBinSize() const
+        {
+            float size = mWavelengths.back() - mWavelengths.front();
+            for (std::size_t idx=1;idx<mWavelengths.size();++idx)
+                size = std::min(size,mWavelengths[idx]-mWavelengths[idx-1]);
+
+            return size;
+        }
+
         /** Get the maximum value in the spectrum.
             \return The maximum value.
         */
@@ -110,6 +129,8 @@ namespace Falcor
         {
             return mMaxValue;
         }
+
+        auto getBins() const { return mValues.size(); }
 
     private:
         std::vector<float> mWavelengths;    ///< Wavelengths in nm.
@@ -222,6 +243,18 @@ namespace Falcor
             \return The maximum value.
         */
         float getMaxValue() const { return mMaxValue; }
+
+        PiecewiseLinearSpectrum toPiecewiseLinearSpectrum(const std::size_t samples, float scale=1.f) {
+            static constexpr auto min = SpectrumConstants::minWavelength, max = SpectrumConstants::maxWavelength;
+            std::vector<float> wv, vals;
+            wv.resize(samples); vals.resize(samples);
+            for (std::size_t idx = 0; idx < samples; ++idx) {
+                wv[idx] = min + (max-min)/float(samples-1)*idx;
+                vals[idx] = eval(wv[idx]) * scale;
+            }
+
+            return PiecewiseLinearSpectrum{ wv,vals };
+        }
 
     private:
         float mTemperature;             ///< Temperature in K.

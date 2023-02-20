@@ -31,8 +31,8 @@
 #include "Utils/NumericRange.h"
 #include "Scene/Importer.h"
 #include "Scene/Curves/CurveConfig.h"
-#include "Scene/Material/HairMaterial.h"
-#include "Scene/Material/StandardMaterial.h"
+#include "Utils/Color/SpectrumUtils.h"
+#include "Rendering/Materials/PLT/PLTDiffuseMaterial.h"
 #include "Utils/Settings.h"
 #include "Subdivision.h"
 
@@ -905,10 +905,6 @@ namespace Falcor
             // It is possible the material was found in the scene and is assigned to other non-curve geometry.
             // We'll issue a warning if there is a material type mismatch.
             FALCOR_ASSERT(pMaterial);
-            if (pMaterial->getType() != MaterialType::Hair)
-            {
-                logWarning("Material '{}' assigned to curve '{}' is of non-hair type.", pMaterial->getName(), sbCurve.name);
-            }
 
             sbCurve.pMaterial = pMaterial;
 
@@ -1600,9 +1596,12 @@ namespace Falcor
         float angle = getAttribute(distantLight.GetAngleAttr(), 0.f);
 
         DistantLight::SharedPtr pLight = DistantLight::create(lightPrim.GetName());
-        pLight->setIntensity(intensity);
+        const auto &spectrum = SpectrumUtils::rgbToSpectrum<float>(intensity);
+        const auto profile = builder.addSpectralProfile(spectrum);
+        pLight->setIntensity(profile, builder.getSpectralProfile(profile));
         pLight->setWorldDirection(float3(0.f, 0.f, -1.f));
-        pLight->setAngle(float(0.5 * angle * M_PI / 180));
+        const float sinAngle = sin(angle / 2.f);
+        pLight->setSourceSolidAngle(4.f*M_PI*sinAngle*sinAngle);
 
         addLight(lightPrim, pLight, nodeStack.back());
     }
@@ -1617,7 +1616,10 @@ namespace Falcor
         float height = getAttribute(rectLight.GetHeightAttr(), 1.f);
 
         AnalyticAreaLight::SharedPtr pLight = RectLight::create(lightPrim.GetName());
-        pLight->setIntensity(intensity);
+        const auto &spectrum = SpectrumUtils::rgbToSpectrum<float>(intensity);
+        //pLight->setIntensity(builder.addSpectralProfile(spectrum), spectrum);
+        const auto profile = builder.addSpectralProfile(spectrum);
+        pLight->setIntensity(profile, builder.getSpectralProfile(profile));
         // Scale width and height to account for the fact that Falcor's 'unit' rect light extends
         // from (-1,-1) to (1,1), vs. USD's (-0.5,-0.5) to (0.5,0.5).
         // Flip Z to emit along -Z axis, flip X to preserve handedness.
@@ -1635,7 +1637,10 @@ namespace Falcor
         float radius = getAttribute(sphereLight.GetRadiusAttr(), 0.5f);
 
         AnalyticAreaLight::SharedPtr pLight = SphereLight::create(lightPrim.GetName());
-        pLight->setIntensity(intensity);
+        const auto &spectrum = SpectrumUtils::rgbToSpectrum<float>(intensity);
+        //pLight->setIntensity(builder.addSpectralProfile(spectrum), spectrum);
+        const auto profile = builder.addSpectralProfile(spectrum);
+        pLight->setIntensity(profile, builder.getSpectralProfile(profile));
         pLight->setScaling(float3(radius, radius, radius));
 
         addLight(lightPrim, pLight, nodeStack.back());
@@ -1650,7 +1655,10 @@ namespace Falcor
         float radius = getAttribute(diskLight.GetRadiusAttr(), 0.5f);
 
         AnalyticAreaLight::SharedPtr pLight = DiscLight::create(lightPrim.GetName());
-        pLight->setIntensity(intensity);
+        const auto &spectrum = SpectrumUtils::rgbToSpectrum<float>(intensity);
+        //pLight->setIntensity(builder.addSpectralProfile(spectrum), spectrum);
+        const auto profile = builder.addSpectralProfile(spectrum);
+        pLight->setIntensity(profile, builder.getSpectralProfile(profile));
 
         // Flip Z to emit along -Z axis, flip X to preserve handedness. Equivalent to a scale by (radius, radius, 1), followed by a 180 degree rotation around Y.
         pLight->setScaling(float3(-radius, radius, -1.f));
@@ -1709,9 +1717,8 @@ namespace Falcor
         UsdShadeMaterialBindingAPI(mesh).Bind(material);
 
         auto materialName = material.GetPath().GetString();
-        auto pMaterial = StandardMaterial::create(builder.getDevice(), materialName);
-        pMaterial->setEmissiveColor(intensity);
-        pMaterial->setLightProfileEnabled(true);
+        auto pMaterial = PLTDiffuseMaterial::create(builder.getDevice(), materialName);
+        pMaterial->setEmissionSpectralProfile(true, builder.addSpectralProfileRGB(intensity));
 
         std::lock_guard<std::mutex> lock(materialMutex);
         builder.addMaterial(std::move(pMaterial));
@@ -1935,6 +1942,73 @@ namespace Falcor
         mpPreviewSurfaceConverter = std::make_unique<PreviewSurfaceConverter>(builder.getDevice());
     }
 
+    void ImporterContext::addStandinCandidate(const UsdPrim& prim)
+    {
+        // If the name of the given instance prim is lexically less than the current standin name for its prototype,
+        // use its name as the prototype name.
+        FALCOR_ASSERT(prim.IsInstance());
+        std::string protoName(prim.GetMaster().GetPath().GetString());
+        std::string primName(prim.GetPath().GetString());
+        if (prototypeStandinNames.find(protoName) == prototypeStandinNames.end() || prototypeStandinNames[protoName] > primName)
+        {
+            prototypeStandinNames[protoName] = primName;
+        }
+    }
+
+    std::string ImporterContext::getMaterialName(const std::string& matPath)
+    {
+        if (matPath.empty() || matPath[0] != '/')
+        {
+            return matPath;
+        }
+        // Get the name of the root prim
+        size_t endPos = matPath.find_first_of('/', 1);
+        FALCOR_ASSERT(endPos != std::string::npos);
+
+        std::string rootName = matPath.substr(0, endPos);
+
+        // If the root prim name is a prototype, use its standin name instead.
+        if (prototypeStandinNames.find(rootName) != prototypeStandinNames.end())
+        {
+            return prototypeStandinNames[rootName] + matPath.substr(endPos);
+        }
+        else
+        {
+            return matPath;
+        }
+    }
+
+    bool ImporterContext::alternativeNameExists(const std::string& materialPath)
+    {
+        std::lock_guard<std::mutex> lock(materialMutex);
+        auto it = localDict.find(materialPath);
+        if (it != localDict.end())
+            return true;
+
+        return dict.keyExists(materialPath);
+    }
+
+    std::string ImporterContext::getAlternativeMaterialName(const std::string& materialPath)
+    {
+        std::lock_guard<std::mutex> lock(materialMutex);
+
+        auto it = localDict.find(materialPath);
+        if (it != localDict.end())
+            return it->second;
+
+        // Look up material instance name for this material in the dictionary
+        if (!dict.keyExists(materialPath))
+        {
+            return std::string();
+        }
+
+        return (const std::string&)dict[materialPath];
+    }
+
+    Material::SharedPtr ImporterContext::getMaterialInstance(const std::string& name)
+    {
+        return builder.getMaterial(name);
+    }
 
     Material::SharedPtr ImporterContext::resolveMaterial(const UsdPrim& prim, const UsdShadeMaterial& material, const std::string& primName)
     {
@@ -1942,8 +2016,47 @@ namespace Falcor
 
         if (material)
         {
-            // Note that this call will block if another thread is in the process of converting the same material.
-            pMaterial = mpPreviewSurfaceConverter->convert(material, primName, builder.getDevice()->getRenderContext());
+            if (dict.size() + localDict.size() > 0)
+            {
+                std::string materialName = getMaterialName(material.GetPath().GetString());
+                if (materialName.empty())
+                {
+                    logError("Could not resolve the name of the material associated with path '{}' bound to '{}'. Using a default material in its place.", materialName, primName);
+                }
+                else
+                {
+                    if (alternativeNameExists(materialName))
+                    {
+                        std::string name = getAlternativeMaterialName(materialName);
+                        if (name.empty())
+                        {
+                            logWarning("Empty alternative material name for '{}' bound to '{}' specified. Using a default material in its place.", materialName, primName);
+                        }
+                        else
+                        {
+                            // Get the named material instance previously added via python/pyscene, if any.
+                            pMaterial = getMaterialInstance(name);
+                            if (pMaterial == nullptr)
+                            {
+                                logError("No alternative version '{}' of material '{}' bound to '{}'.", name, materialName, primName);
+                            }
+                            else
+                            {
+                                return pMaterial;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        logError("No alternative material name specified for '{}' bound to '{}'.", materialName, primName);
+                    }
+                }
+            }
+            else
+            {
+                // Note that this call will block if another thread is in the process of converting the same material.
+                pMaterial = mpPreviewSurfaceConverter->convert(material, primName, builder.getDevice()->getRenderContext());
+            }
         }
         if (!pMaterial)
         {
@@ -1958,11 +2071,11 @@ namespace Falcor
         Material::SharedPtr pMaterial;
         float3 defaultColor;
 
-        if (prim.IsA<UsdGeomBasisCurves>())
-        {
-            defaultColor = float3(0.8f, 0.4f, 0.05f);
-        }
-        else if (prim.IsA<UsdGeomMesh>())
+        //if (prim.IsA<UsdGeomBasisCurves>())
+        //{
+        //    defaultColor = float3(0.8f, 0.4f, 0.05f);
+        //}
+        if (prim.IsA<UsdGeomMesh>())
         {
             defaultColor = float3(0.7f, 0.7f, 0.7f);
         }
@@ -2003,28 +2116,11 @@ namespace Falcor
                 {
                     return it->second;
                 }
-                StandardMaterial::SharedPtr pDefaultMaterial = StandardMaterial::create(builder.getDevice(), "default-mesh-" + std::to_string(defaultMaterialMap.size()));
+                auto pDefaultMaterial = PLTDiffuseMaterial::create(builder.getDevice(), "default-mesh-" + std::to_string(defaultMaterialMap.size()));
                 pDefaultMaterial->setBaseColor(float4(defaultColor, 1.f));
-                pDefaultMaterial->setRoughness(0.3f);
-                pDefaultMaterial->setMetallic(0.f);
-                pDefaultMaterial->setIndexOfRefraction(1.5f);
                 pDefaultMaterial->setDoubleSided(true);
                 defaultMaterialMap[defaultColor] = pDefaultMaterial;
                 return pDefaultMaterial;
-            }
-            else if (prim.IsA<UsdGeomBasisCurves>())
-            {
-                auto it = defaultCurveMaterialMap.find(defaultColor);
-                if (it != defaultCurveMaterialMap.end())
-                {
-                    return it->second;
-                }
-                HairMaterial::SharedPtr pDefaultCurveMaterial = HairMaterial::create(builder.getDevice(), "default-curve-" + std::to_string(defaultCurveMaterialMap.size()));
-                pDefaultCurveMaterial->setBaseColor(float4(defaultColor, 1.f));
-                pDefaultCurveMaterial->setSpecularParams(float4(kDefaultCurveLongitudinalRoughness, kDefaultCurveAzimuthalRoughness, kDefaultScaleAngleDegree, 0.f));
-                pDefaultCurveMaterial->setIndexOfRefraction(kDefaultCurveIOR);
-                defaultCurveMaterialMap[defaultColor] = pDefaultCurveMaterial;
-                return pDefaultCurveMaterial;
             }
             else
             {

@@ -66,14 +66,17 @@ GBufferData prepareGBufferData(const ShadingData sd, const VertexData v, const I
     gbuf.normW          = float4(sd.N, 0.f);
     gbuf.tangentW       = v.tangentW;
     gbuf.faceNormalW    = float4(sd.faceN, 0.f);
-    gbuf.guideNormalW   = float4(bsdfProperties.guideNormal, 0.f);
+    gbuf.guideNormalW   = float4(.0f);
+    // gbuf.guideNormalW   = float4(bsdfProperties.guideNormal, 0.f);
     gbuf.texC           = sd.uv;
-    gbuf.mtlData        = uint4(sd.materialID, sd.mtl.packedData.x, sd.mtl.packedData.y, mi.getLobeTypes(sd));
+    gbuf.mtlData        = uint4(sd.materialID, sd.mtl.packedData.x, sd.mtl.packedData.y, mi.getLobes(sd));
 
     // Setup legacy material channels.
-    gbuf.diffuseOpacity = float4(bsdfProperties.diffuseReflectionAlbedo, sd.opacity);
-    gbuf.specRough      = float4(bsdfProperties.specularReflectance, bsdfProperties.roughness);
-    gbuf.emissive       = float4(bsdfProperties.emission, 0.f);
+    // gbuf.diffuseOpacity = float4(bsdfProperties.diffuseReflectionAlbedo, sd.opacity);
+    // gbuf.specRough      = float4(bsdfProperties.specularReflectance, bsdfProperties.roughness);
+    gbuf.diffuseOpacity = .0f;
+    gbuf.specRough      = .0f;
+    gbuf.emissive       = float4(bsdfProperties.emissionRGB, 0.f);
 
     return gbuf;
 }

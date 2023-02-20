@@ -354,6 +354,12 @@ namespace Falcor
 
         timeReport.measure("Load scene settings");
 
+        // Traverse instances, computing the standin name to use for each.
+        for (const auto& prim : pStage->Traverse(UsdPrimDefaultPredicate))
+        {
+            if (prim.IsInstance())
+                ctx.addStandinCandidate(prim);
+        }
 
         if (!ctx.useInstanceProxies)
         {

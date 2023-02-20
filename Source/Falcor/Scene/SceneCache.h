@@ -93,6 +93,9 @@ namespace Falcor
         static void writeLight(OutputStream& stream, const Light::SharedPtr& pLight);
         static Light::SharedPtr readLight(InputStream& stream);
 
+        static void writeSpectralProfile(OutputStream& stream, const SpectralProfile& SP);
+        static SpectralProfile readSpectralProfile(InputStream& stream);
+
         static void writeMaterials(OutputStream& stream, const MaterialSystem::SharedPtr& pMaterials);
         static void writeMaterial(OutputStream& stream, const Material::SharedPtr& pMaterial);
         static void writeBasicMaterial(OutputStream& stream, const BasicMaterial::SharedPtr& pMaterial);

@@ -48,6 +48,7 @@ enum class TextureChannelFlags : uint32_t
     Green = 0x2,
     Blue = 0x4,
     Alpha = 0x8,
+    RG = 0x3,
     RGB = 0x7,
     RGBA = 0xf,
 };

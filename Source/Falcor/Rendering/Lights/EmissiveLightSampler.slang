@@ -28,6 +28,8 @@
 #include "EmissiveLightSamplerType.slangh"
 __exported import Rendering.Lights.EmissiveLightSamplerInterface;
 __exported import Utils.Sampling.SampleGeneratorInterface;
+import Utils.HWSS;
+import Utils.Color.SpectrumUtils;
 
 /** The host sets the _EMISSIVE_LIGHT_SAMPLER_TYPE define to select sampler.
 
@@ -63,7 +65,7 @@ __exported import Utils.Sampling.SampleGeneratorInterface;
     */
     struct NullEmissiveSampler : IEmissiveLightSampler
     {
-        bool sampleLight<S : ISampleGenerator>(const float3 posW, const float3 normalW, const bool upperHemisphere, inout S sg, out TriangleLightSample ls)
+        bool sampleLight<S : ISampleGenerator>(const float3 posW, const float3 normalW, const bool upperHemisphere, inout S sg, const float wavelength, bool importanceSampleSpectrum, out TriangleLightSample ls)
         {
             return false;
         }

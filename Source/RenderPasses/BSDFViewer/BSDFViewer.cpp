@@ -331,8 +331,8 @@ void BSDFViewer::renderUI(Gui::Widgets& widget)
             bool showAlbedo = (mParams.outputAlbedo & (uint32_t)AlbedoSelection::ShowAlbedo) != 0;
             bool diffuseReflection = (mParams.outputAlbedo & (uint32_t)AlbedoSelection::DiffuseReflection) != 0;
             bool diffuseTransmission = (mParams.outputAlbedo & (uint32_t)AlbedoSelection::DiffuseTransmission) != 0;
-            bool specularReflection = (mParams.outputAlbedo & (uint32_t)AlbedoSelection::SpecularReflection) != 0;
-            bool specularTransmission = (mParams.outputAlbedo & (uint32_t)AlbedoSelection::SpecularTransmission) != 0;
+            bool specularReflection = (mParams.outputAlbedo & (uint32_t)AlbedoSelection::ScatterReflection) != 0;
+            bool specularTransmission = (mParams.outputAlbedo & (uint32_t)AlbedoSelection::ScatterTransmission) != 0;
 
             dirty |= bsdfGroup.checkbox("Show albedo", showAlbedo);
             bsdfGroup.tooltip("If enabled, the albedo is output instead of reflectance.\nThe checkboxes indicate which albedo components are included in the total.", true);
@@ -346,8 +346,8 @@ void BSDFViewer::renderUI(Gui::Widgets& widget)
             mParams.outputAlbedo = (showAlbedo ? (uint32_t)AlbedoSelection::ShowAlbedo : 0)
                 | (diffuseReflection ? (uint32_t)AlbedoSelection::DiffuseReflection : 0)
                 | (diffuseTransmission ? (uint32_t)AlbedoSelection::DiffuseTransmission : 0)
-                | (specularReflection ? (uint32_t)AlbedoSelection::SpecularReflection : 0)
-                | (specularTransmission ? (uint32_t)AlbedoSelection::SpecularTransmission : 0);
+                | (specularReflection ? (uint32_t)AlbedoSelection::ScatterReflection : 0)
+                | (specularTransmission ? (uint32_t)AlbedoSelection::ScatterTransmission : 0);
         }
         else if (mParams.viewerMode == BSDFViewerMode::Slice)
         {

@@ -60,10 +60,9 @@ interface IMaterial
         \param[in] ms Material system. This provides the resources for pattern generation.
         \param[in] sd Shading data.
         \param[in] lod Method for computing texture level-of-detail, must implement the `ITextureSampler` interface.
-        \param[in] hints Optional hints to control the behavior of the material instance. Combination of `MaterialInstanceHints` flags.
         \return MaterialInstance implementing the `IMaterialInstance` interface.
     */
-    MaterialInstance setupMaterialInstance(const MaterialSystem ms, const ShadingData sd, const ITextureSampler lod, const uint hints = (uint)MaterialInstanceHints::None);
+    MaterialInstance setupMaterialInstance(const MaterialSystem ms, const ShadingData sd, const ITextureSampler lod);
 
     /** Modify the tangent space at the given shading point.
         This function is called by the material system when preparing the `ShadingData` struct.

@@ -36,7 +36,22 @@ __exported import Scene.Material.TextureHandle;
 __exported import Scene.Material.MaterialData;
 #endif
 
+
 BEGIN_NAMESPACE_FALCOR
+
+
+struct SpectralProfile
+{
+    static const uint32_t kMaxBins = 128;
+
+    float3 rgb;
+    float intensity;
+    uint32_t bins;
+    float minWavelength;
+    float maxWavelength;
+    float pdf[kMaxBins];
+    float icdf[kMaxBins];
+};
 
 /** This is a host/device structure that describes the parameters for a basic material.
 
@@ -47,14 +62,17 @@ BEGIN_NAMESPACE_FALCOR
 */
 struct BasicMaterialData
 {
+    static const uint32_t no_spectral_profile = uint32_t(-1);
+
     // MaterialHeader (8B) is stored just before this struct in memory.
     uint        flags                   = 0;                ///< Material flags and packed sampler IDs. See accessors below.
-    float       emissiveFactor          = 1.f;              ///< Multiplication factor for the emissive color to control light intensity. Range [0,inf).
 
     float16_t4  baseColor               = float16_t4(1.f);  ///< Material base color (RGB) and opacity (A).
     float16_t4  specular                = float16_t4(0.f);  ///< Material specular channel encoding occlusion (R), roughness (G), metallic (B) in the default MetalRough mode. In SpecGloss mode specular color (RGB) and glossiness (A).
 
-    float3      emissive                = float3(0.f);      ///< Emissive color (RGB).
+    float16_t4  data1                   = float16_t4(0.f);
+    float16_t4  data2                   = float16_t4(0.f);
+
     float16_t   specularTransmission    = float16_t(0.f);   ///< Specular transmission. Range [0,1].
     float16_t3  transmission            = float16_t3(1.f);  ///< Transmission color.
     float16_t   diffuseTransmission     = float16_t(0.f);   ///< Diffuse transmission. Range [0,1].
@@ -63,6 +81,10 @@ struct BasicMaterialData
     float16_t   IoR                     = float16_t(1.5f);  ///< Index of refraction. Range [1,inf).
     float16_t3  volumeAbsorption        = float16_t3(0.f);  ///< Volume absorption coefficient. Range [0,inf).
     float16_t   volumeAnisotropy        = float16_t(0.f);   ///< Volume phase function anisotropy (g). Range [-1,1].
+
+    uint32_t    emissionSpectralId      = no_spectral_profile;
+    uint32_t    iorNSpectralId          = no_spectral_profile;
+    uint32_t    iorKSpectralId          = no_spectral_profile;
 
     float       displacementScale       = 0.f;              ///< Displacement scale value.
     float       displacementOffset      = 0.f;              ///< Displacement offset value.
@@ -74,6 +96,8 @@ struct BasicMaterialData
     TextureHandle texNormalMap;
     TextureHandle texTransmission;
     TextureHandle texDisplacementMap;
+    TextureHandle texData1;
+    TextureHandle texData2;
 
     static const uint kShadingModelBits = 1;
     static const uint kNormalMapTypeBits = 2;
@@ -110,6 +134,8 @@ struct BasicMaterialData
     */
     uint getDisplacementMinSamplerID() CONST_FUNCTION { return EXTRACT_BITS(MaterialHeader::kSamplerIDBits, kMinSamplerIDOffset, flags); }
     uint getDisplacementMaxSamplerID() CONST_FUNCTION { return EXTRACT_BITS(MaterialHeader::kSamplerIDBits, kMaxSamplerIDOffset, flags); }
+
+    bool isEmissive() CONST_FUNCTION { return emissionSpectralId != no_spectral_profile; }
 };
 
 END_NAMESPACE_FALCOR

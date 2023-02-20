@@ -38,16 +38,20 @@ enum class LobeType // : uint32_t
     None                    = 0x00,
 
     DiffuseReflection       = 0x01,
-    SpecularReflection      = 0x02,
+    ScatterReflection       = 0x02,
     DeltaReflection         = 0x04,
+    DispersiveDeltaReflection = 0x08,
 
     DiffuseTransmission     = 0x10,
-    SpecularTransmission    = 0x20,
+    ScatterTransmission     = 0x20,
     DeltaTransmission       = 0x40,
+    DispersiveDeltaTransmission = 0x80,
 
     Diffuse                 = 0x11,
-    Specular                = 0x22,
-    Delta                   = 0x44,
+    Scatter                 = 0x22,
+    NonDispersiveDelta      = 0x44,
+    DispersiveDelta         = 0x88,
+    Delta                   = 0xCC,
     NonDelta                = 0x33,
 
     Reflection              = 0x0f,
@@ -56,7 +60,12 @@ enum class LobeType // : uint32_t
     NonDeltaReflection      = 0x03,
     NonDeltaTransmission    = 0x30,
 
-    All                     = 0xff,
+    ClientSide              = 0xff,
+
+    // Can be used in shader code only
+    All                     = 0xffff,
+    MaterialSpecifc         = 0xff00,       // For materials' private use
 };
+static const uint LobeTypeMaterialSpecificOffset = 8;
 
 END_NAMESPACE_FALCOR

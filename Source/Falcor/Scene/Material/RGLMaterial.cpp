@@ -73,7 +73,7 @@ namespace Falcor
         prepareAlbedoLUT(mpDevice->getRenderContext());
     }
 
-    bool RGLMaterial::renderUI(Gui::Widgets& widget)
+    bool RGLMaterial::renderUI(Gui::Widgets& widget, const Scene *scene)
     {
         widget.text("RGL BRDF " + mBRDFName);
         widget.text(mBRDFDescription);

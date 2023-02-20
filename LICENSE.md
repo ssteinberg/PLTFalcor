@@ -1,3 +1,16 @@
+
+## PLT License
+
+This applies to all source files marked with "PLT" in the header comment, and all PLT-related additions.
+
+Copyright (c) 2023, Shlomi Steinberg, All rights reserved.
+
+<a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-nc/4.0/88x31.png" /></a><br />This work is licensed under a <a rel="license" href="http://creativecommons.org/licenses/by-nc/4.0/">Creative Commons Attribution-NonCommercial 4.0 International License</a>.
+
+---
+
+## Falcor License
+
 Copyright (c) 2020, NVIDIA CORPORATION. All rights reserved.
 Redistribution and use in source and binary forms, with or without modification, are permitted provided that the following conditions
 are met:
@@ -24,3 +37,4 @@ For details on the specific licenses please refer to the provided links.
 - RTXGI: https://github.com/NVIDIAGameWorks/RTXGI/blob/main/License.txt
 - RTXDI: https://github.com/NVIDIAGameWorks/RTXDI/blob/main/LICENSE.txt
 - NRD: https://github.com/NVIDIAGameWorks/RayTracingDenoiser/blob/master/LICENSE.txt
+- mitsuba: https://github.com/mitsuba-renderer/mitsuba2/blob/master/LICENSE

@@ -82,6 +82,9 @@ namespace Falcor
             Displacement,
             Index, // For MERLMix material
 
+           Data1,
+           Data2,
+
             Count // Must be last
         };
 
@@ -119,7 +122,7 @@ namespace Falcor
         /** Render the UI.
             \return True if the material was modified.
         */
-        virtual bool renderUI(Gui::Widgets& widget);
+        virtual bool renderUI(Gui::Widgets& widget, const Scene *scene);
 
         /** Update material. This prepares the material for rendering.
             \param[in] pOwner The material system that this material is used with.
@@ -370,6 +373,8 @@ namespace Falcor
             tostr(Transmission);
             tostr(Displacement);
             tostr(Index);
+            tostr(Data1);
+            tostr(Data2);
 #undef tostr
         default:
             throw ArgumentError("Invalid texture slot");

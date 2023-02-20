@@ -96,6 +96,9 @@ namespace Falcor
         if (mPrevData.frameHeight != mData.frameHeight) mChanges |= Changes::Frustum;
         if (mPrevData.frameWidth != mData.frameWidth)   mChanges |= Changes::Frustum;
 
+        if (mPrevData.polarizer != mData.polarizer)     mChanges |= Changes::Exposure;
+        if (mPrevData.polarizerTheta != mData.polarizerTheta) mChanges |= Changes::Exposure;
+
         // Jitter
         if (mPrevData.jitterX != mData.jitterX) mChanges |= Changes::Jitter;
         if (mPrevData.jitterY != mData.jitterY) mChanges |= Changes::Jitter;
@@ -309,6 +312,16 @@ namespace Falcor
         return angle;
     }
 
+    void Camera::setPolarizationIntensity(float polarizer) {
+        mData.polarizer = polarizer;
+        mDirty = true;
+    }
+
+    void Camera::setPolarizationAngle(float t) {
+        mData.polarizerTheta = t;
+        mDirty = true;
+    }
+
     Ray Camera::computeRayPinhole(uint2 pixel, uint2 frameDim, bool applyJitter) const
     {
         Ray ray;
@@ -363,6 +376,11 @@ namespace Falcor
 
         float ISOSpeed = getISOSpeed();
         if (widget.var("ISO Speed", ISOSpeed, 0.8f, FLT_MAX, 0.25f)) setISOSpeed(ISOSpeed);
+
+        float polarizer = getPolarizationIntensity();
+        if (widget.var("Polarization intensity", polarizer, .0f, 1.f, 0.025f)) setPolarizationIntensity(polarizer);
+        float polarizerTheta = getPolarizationAngle()*180.f/M_PI;
+        if (widget.var("Polarization angle", polarizerTheta, .0f, 180.f, 0.5f)) setPolarizationAngle(polarizerTheta*M_PI/180.f);
 
         float2 depth = float2(mData.nearZ, mData.farZ);
         if (widget.var("Depth Range", depth, 0.f, FLT_MAX, 0.1f)) setDepthRange(depth.x, depth.y);
@@ -431,6 +449,8 @@ namespace Falcor
         camera.def_property(kPosition.c_str(), &Camera::getPosition, &Camera::setPosition);
         camera.def_property(kTarget.c_str(), &Camera::getTarget, &Camera::setTarget);
         camera.def_property(kUp.c_str(), &Camera::getUpVector, &Camera::setUpVector);
+        camera.def_property("polarizationIntensity", &Camera::getPolarizationIntensity, &Camera::setPolarizationIntensity);
+        camera.def_property("polarizationAngle", &Camera::getPolarizationAngle, &Camera::setPolarizationAngle);
         camera.def(pybind11::init(&Camera::create), "name"_a = "");
     }
 }

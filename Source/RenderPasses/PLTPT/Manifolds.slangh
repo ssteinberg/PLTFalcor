@@ -1,0 +1,347 @@
+/***************************************************************************
+ # PLT
+ # Copyright (c) 2022-23, Shlomi Steinberg. All rights reserved.
+ #
+ # Redistribution and use in source and binary forms, with or without
+ # modification, are permitted provided that the following conditions
+ # are met:
+ #  * Redistributions of source code must retain the above copyright
+ #    notice, this list of conditions and the following disclaimer.
+ #  * Redistributions in binary form must reproduce the above copyright
+ #    notice, this list of conditions and the following disclaimer in the
+ #    documentation and/or other materials provided with the distribution.
+ #  * Neither the name of NVIDIA CORPORATION nor the names of its
+ #    contributors may be used to endorse or promote products derived
+ #    from this software without specific prior written permission.
+ #
+ # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS "AS IS" AND ANY
+ # EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+ # PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+ # CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+ # EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+ # PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ # PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY
+ # OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ **************************************************************************/
+
+#include "Utils/Math/MathConstants.slangh"
+#include "Scene/SceneDefines.slangh"
+
+import Scene.Raytracing;
+import Utils.Math.MathHelpers;
+
+import Rendering.PLT;
+import Rendering.Utils.DifferentialShadingGeometry;
+
+import Utils.Color.SpectrumUtils;
+
+
+#ifndef MNEE_MAX_MS_OCCLUDERS
+#define MNEE_MAX_MS_OCCLUDERS 2
+#endif
+#ifndef MNEE_MAX_ITERATIONS
+#define MNEE_MAX_ITERATIONS 40
+#endif
+#ifndef MNEE_SOLVER_THRESHOLD
+#define MNEE_SOLVER_THRESHOLD 1e-5
+#endif
+
+static const uint  kMNEEMaxMSOccluders   = MNEE_MAX_MS_OCCLUDERS;
+static const int   kMNEEMaxIterations    = MNEE_MAX_ITERATIONS;
+static const float kMNEESolverThreshold  = MNEE_SOLVER_THRESHOLD;
+
+
+struct MSHitData {
+    PackedHitInfo hit;
+    float3 posW;
+    uint lobe;
+    property index : uint {
+        get { return TriangleHit(hit).instanceID.index; }
+    }
+}
+struct ManifoldSampleData {
+    MSHitData hits[kMNEEMaxMSOccluders];
+    float3 woLastHitToLight;
+    int hitCount;
+    uint iterations;
+    float wavelength;
+    float pdf;
+    bool dispersive;
+
+    __init(float wavelength) {
+        this.iterations = 0;
+        this.hitCount = 0;
+        this.wavelength = wavelength;
+        this.dispersive = false;
+        this.pdf = 1.f;
+    }
+};
+
+
+bool manifoldSampleVertex<S : ISampleGenerator>(const PackedHitInfo hitInfo,
+                                                const TriangleHit triangleHit,
+                                                const ShadingData sd,
+                                                const IMaterialInstance bsdf,
+                                                const float3 LightDir,
+                                                inout S sg,
+                                                inout ManifoldSampleData data) {
+    // Sample a lobe in direction -wi
+    BSDFSample sample;
+    if (!bsdf.sample(sd, sg, sample, data.wavelength, (uint)LobeType::Delta, LightDir))
+        return false;
+
+    data.pdf *= sample.pdf;
+    data.hits[data.hitCount].lobe = sample.lobe;
+    data.hits[data.hitCount].hit = hitInfo;
+    data.hits[data.hitCount].posW = sd.posW;
+    // data.hits[data.hitCount].index = triangleHit.instanceID.index;
+    data.dispersive |= (sample.lobe&(uint)LobeType::DispersiveDelta)!=0;
+    ++data.hitCount;
+
+    return true;
+}
+
+bool traceMNEEOccluders<S : ISampleGenerator>(const float3 lightPos,
+                                              const bool isDistantLight,
+                                              RayDesc ray,
+                                              inout S sg,
+                                              const int maxMSBounces,
+                                              inout ManifoldSampleData data) {
+    const float3 wi = -ray.Direction;
+    // Trace hits, insert into hits structure
+    for (;;) {
+        let hit = shadowRay(ray);
+        // Miss?
+        if (!hit.isHit)
+            return true;
+        // Too may hits?
+        if (data.hitCount>=kMNEEMaxMSOccluders || data.hitCount>=maxMSBounces)
+            return false;
+
+        let triangleHit = TriangleHit(hit.hitInfo);
+        VertexData v = gScene.getVertexData(triangleHit);
+        v.posW = ray.Origin + hit.dist * ray.Direction;
+        const uint materialID = gScene.getMaterialID(triangleHit.instanceID);
+        let lod = ExplicitLodTextureSampler(0.f);
+        const ShadingData sd = gScene.materials.prepareShadingData(v, materialID, wi, lod);
+
+        let bsdf = gScene.materials.getMaterialInstance(sd, lod);
+        let bsdfProp = bsdf.getProperties(sd);
+
+        if (!bsdfProp.canManifoldWalkTransmissive) {
+            // Incompatible for MS
+            return false;
+        }
+
+        // Sample a lobe in direction -wi
+        if (!manifoldSampleVertex(hit.hitInfo, triangleHit, sd, bsdf, -wi, sg, data) ||
+            (data.hits[data.hitCount-1].lobe&(uint)LobeType::Transmission)==0) {
+            // Non transmissive
+            return false;
+        }
+
+        // Update ray
+        ray.Origin = computeNewRayOrigin(sd, ray.Direction);
+        ray.TMax  -= hit.dist;
+    }
+}
+
+
+
+struct MNEEStep {
+    float beta;
+
+    [mutating] void onFail() {
+        beta /= 4.f;
+    }
+    [mutating] void onStep() {
+        beta = min(1.0f, 2.f*beta);
+    }
+};
+
+bool manifoldNEESample<S : ISampleGenerator>(const RayDesc visRayDesc,
+                                             const float3 origin,
+                                             const float3 lightPos,
+                                             const float3 lightDir,
+                                             const bool isDistantLight,
+                                             const int maxMSBounces,
+                                             inout S sg,
+                                             inout ManifoldSampleData data) {
+    // Find potential transmissive occluders
+    if (!traceMNEEOccluders(lightPos, isDistantLight, visRayDesc, sg, maxMSBounces, data))
+        return false;
+    // No need for MS?
+    if (data.hitCount == 0)
+        return true;
+
+    MNEEStep steps[kMNEEMaxMSOccluders];
+    for (int idx=0;idx<kMNEEMaxMSOccluders;++idx) {
+        steps[idx].beta = 1.f;
+    }
+
+    bool success = false;
+    for(;!success;) {
+        success = true;
+        for (int idx=0;idx<data.hitCount;++idx) {
+            // Compute tangent step based on local differential geometry.
+            let triangleHit = TriangleHit(data.hits[idx].hit);
+            const VertexData v = gScene.getVertexData(triangleHit);
+            const uint materialID = gScene.getMaterialID(triangleHit.instanceID);
+
+            let dsg = differentialShadingGeometry(gScene, triangleHit);
+
+            // Compute pdvs of wi and wo
+            const float3 p0 = idx==0 ? origin : data.hits[idx-1].posW;
+            const float3pdv pdvp0 = dsg.pdw(p0);
+            const float3 p2 = idx+1==data.hitCount ? lightPos : data.hits[idx+1].posW;
+            float3pdv pdvp2 = { lightDir, .0f, .0f };
+            if (!isDistantLight)
+                pdvp2 = dsg.pdw(p2);
+
+            // Compute the scattered direction in the into-material direction (to avoid TIR).
+            const bool woIsIn = dot(pdvp2.v, dsg.n.v) < .0f;
+            const float3 wi = woIsIn ? pdvp0.v : pdvp2.v;
+            const float3 wo = woIsIn ? pdvp2.v : pdvp0.v;
+            const float3 wi_ddu = woIsIn ? pdvp0.ddu : pdvp2.ddu;
+            const float3 wo_ddu = woIsIn ? pdvp2.ddu : pdvp0.ddu;
+            const float3 wi_ddv = woIsIn ? pdvp0.ddv : pdvp2.ddv;
+            const float3 wo_ddv = woIsIn ? pdvp2.ddv : pdvp0.ddv;
+
+            let lod = ExplicitLodTextureSampler(0.f);
+            const ShadingData sd = gScene.materials.prepareShadingData(v, materialID, wi, lod);
+            let bsdf = gScene.materials.getMaterialInstance(sd, lod);
+
+            float3kpdv wos = bsdf.partialDerivatives({ wi,wi_ddu,wi_ddv }, dsg, data.hits[idx].lobe, data.wavelength);
+
+            // Do a step
+            float lenC;
+            float3 positionStepDir;
+            float wavelengthStep;
+            if (all(wos.v==.0f))
+                return false;
+            if (!manifoldOneStep({ wo,wo_ddu,wo_ddv },wos, dsg.p, lenC, positionStepDir))
+                return false;
+            // Did we reach a solution?
+            if (lenC < kMNEESolverThreshold)
+                continue;
+            success = false;
+
+            // Line search a Newton step: Project onto the surface.
+            for (;;) {
+                if (++data.iterations > kMNEEMaxIterations)
+                    return false;
+
+                // Make a new proposal.
+                const float3 proposal = data.hits[idx].posW - steps[idx].beta*positionStepDir;
+
+                float3 dirToProposal = proposal - p0;
+                const float dist = length(dirToProposal);
+                dirToProposal /= dist;
+                const ShadowRayHit closestHit = shadowRay(p0,dirToProposal,
+                                        1.01f*dist, max(kShadowRayTMin, .99f*dist));
+                const TriangleHit proposalPoint = TriangleHit(closestHit.hitInfo);
+                if (!closestHit.isHit || data.hits[idx].index!=proposalPoint.instanceID.index) {
+                    // Retry with a smaller step size.
+                    steps[idx].onFail();
+                    continue;
+                }
+
+                data.hits[idx].hit = closestHit.hitInfo;
+                data.hits[idx].posW = p0 + dirToProposal*closestHit.dist;
+                steps[idx].onStep();
+
+                break;
+            }
+        }
+    }
+
+    if (success) {
+        // Check visibility to light
+        const float3 p = data.hits[data.hitCount-1].posW;
+        float3 dir;
+        float dist;
+        if (!isDistantLight) {
+            dir = lightPos - p;
+            dist = length(dir);
+            dir /= dist;
+        } else {
+            dir = lightDir;
+            dist = kRayTMax;
+        }
+        success = visibilityRay(p,dir,dist);
+
+        // Success
+        data.woLastHitToLight = dir;
+    }
+
+    return success;
+}
+
+bool manifoldOneStep(const float3pdv w,
+                     const float3kpdv ws,
+                     const float3pdv p,
+                     out float lenC,
+                     out float3 positionStepDir) {
+    // Evaluate angle difference constraint and compute its derivative.
+    const float2 spho = sphcoords(w.v);
+    const float2 sphio = sphcoords(ws.v);
+    const float dt = spho.x - sphio.x;
+    float dp = spho.y - sphio.y;
+    dp = abs(dp)>M_PI ? dp - sign(dp)*M_2PI : dp;
+
+    // Constraints vector
+    const float2 C = float2(dt, dp);
+    lenC = length(C);
+
+    const float2x2 do = sphcoordsDerivatives(w);
+    const float2x3 dio = sphcoordsDerivatives(ws);
+    const float2x2 dCdX = do - float2x2(dio);
+
+    // Newton step
+    float2x2 invdCdX;
+    if (!tryInvert(dCdX, invdCdX))
+        return false;
+
+    const float2 dX = mul(invdCdX, C);
+    positionStepDir = p.ddu * dX.x + p.ddv * dX.y;
+
+    return true;
+}
+
+float2 sphcoords(float3 w) {
+    float theta = acos(clamp(w.z, -1.f,1.f));
+    float phi = atan2(w.y, w.x);
+    phi += phi<.0f ? M_2PI : .0f;
+    return float2(theta, phi);
+}
+
+float2x2 sphcoordsDerivatives(float3pdv w) {
+    const float dAcos = -1.f / sqrt(max(.0f, 1.f - sqr(w.v.z)));
+    const float invNorm = 1.f / dot(w.v.xy, w.v.xy);
+
+    const float2 dTheta = dAcos * float2(w.ddu.z, w.ddv.z);
+    const float2 dPhi = invNorm * float2(w.v.x*w.ddu.y-w.v.y*w.ddu.x, w.v.x*w.ddv.y-w.v.y*w.ddv.x);
+
+    return float2x2(
+        dTheta.x, dTheta.y,
+        dPhi.x,   dPhi.y
+    );
+}
+
+float2x3 sphcoordsDerivatives(float3kpdv w) {
+    const float dAcos = -1.f / sqrt(max(.0f, 1.f - sqr(w.v.z)));
+    const float invNorm = 1.f / dot(w.v.xy, w.v.xy);
+
+    const float3 dTheta = dAcos * float3(w.ddu.z, w.ddv.z, w.ddl.z);
+    const float3 dPhi = invNorm * float3(w.v.x*w.ddu.y-w.v.y*w.ddu.x,
+                                         w.v.x*w.ddv.y-w.v.y*w.ddv.x,
+                                         w.v.x*w.ddl.y-w.v.y*w.ddl.x);
+
+    return float2x3(
+        dTheta.x, dTheta.y, dTheta.z,
+        dPhi.x,   dPhi.y,   dPhi.z
+    );
+}

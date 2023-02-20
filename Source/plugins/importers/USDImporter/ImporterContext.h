@@ -243,6 +243,11 @@ namespace Falcor
         // Thread-safe.
         Material::SharedPtr getDefaultMaterial(const UsdPrim& prim);
 
+        void addStandinCandidate(const UsdPrim& prim);
+        std::string getMaterialName(const std::string& matPath);
+        bool alternativeNameExists(const std::string& materialPath);
+        std::string getAlternativeMaterialName(const std::string& materialPath);
+        Material::SharedPtr getMaterialInstance(const std::string&);
 
         // Return a pointer to the material to use for the given UsdShadeMaterial. Thread-safe.
         Material::SharedPtr resolveMaterial(const UsdPrim& prim, const UsdShadeMaterial& material, const std::string& primName);
@@ -350,6 +355,8 @@ namespace Falcor
         rmcv::mat4 rootXform;                                                                          ///< Pseudoroot xform, correcting for world unit scaling and up vector orientation.
         NodeID rootXformNodeId{ NodeID::kInvalidID };                                                ///< Get the node ID containing the scene root transform in the builder's scene graph
         bool useInstanceProxies = false;                                                             ///< If true, traverse instances as if they were non-instances (debugging feature).
+
+        std::unordered_map<std::string, std::string> prototypeStandinNames;                          ///< Standin name for each prototype in the stage
 
         std::unordered_map<std::string, Material::SharedPtr> materialMap;                            ///< Created material instances, indexed by material instance name.
         std::unordered_map<float3, Material::SharedPtr, Float3Hash> defaultMaterialMap;              ///< Default materials, indexed by base color.

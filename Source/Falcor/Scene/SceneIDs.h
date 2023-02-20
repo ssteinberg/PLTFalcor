@@ -44,6 +44,7 @@ namespace Falcor
         kCamera,
         kVolume,
         kGlobalGeometry, ///< The linearized global ID, current in order: mest, curve, sdf, custom. Not to be confused with geometryID in curves, which is "either Mesh or Curve, depending on tessellation mode".
+        kSpectralProfile,
     };
 
 
@@ -55,6 +56,7 @@ namespace Falcor
     using SdfGridID = ObjectID<SceneObjectKind, SceneObjectKind::kSdfGrid, uint32_t>;
     using MaterialID = ObjectID<SceneObjectKind, SceneObjectKind::kMaterial, uint32_t>;
     using LightID = ObjectID<SceneObjectKind, SceneObjectKind::kLight, uint32_t>;
+    using SpectralProfileID = ObjectID<SceneObjectKind, SceneObjectKind::kSpectralProfile, uint32_t>;
     using CameraID = ObjectID<SceneObjectKind, SceneObjectKind::kCamera, uint32_t>;
     using VolumeID = ObjectID<SceneObjectKind, SceneObjectKind::kVolume, uint32_t>;
     using GlobalGeometryID = ObjectID<SceneObjectKind, SceneObjectKind::kGlobalGeometry, uint32_t>;

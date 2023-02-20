@@ -31,15 +31,18 @@
 #include "Importer.h"
 #include "Curves/CurveConfig.h"
 #include "Material/StandardMaterial.h"
+#include "Rendering/Materials/PLT/PLTDiffuseMaterial.h"
 #include "Utils/Logger.h"
 #include "Utils/Math/Common.h"
 #include "Utils/Image/TextureAnalyzer.h"
 #include "Utils/Timing/TimeReport.h"
 #include "Utils/Scripting/ScriptBindings.h"
 #include "Utils/Math/MathHelpers.h"
+#include "Utils/Color/SpectrumUtils.h"
 #include <mikktspace.h>
 #include <filesystem>
 #include <cmath>
+#include <random>
 
 namespace Falcor
 {
@@ -286,7 +289,7 @@ namespace Falcor
             logWarning("Scene contains no meshes. Creating a dummy mesh.");
             // Add a dummy (degenerate) mesh.
             auto dummyMesh = TriangleMesh::createDummy();
-            auto dummyMaterial = StandardMaterial::create(mpDevice, "Dummy");
+            auto dummyMaterial = PLTDiffuseMaterial::create(getDevice(), "Dummy");
             auto meshID = addTriangleMesh(dummyMesh, dummyMaterial);
             Node dummyNode = { "Dummy", rmcv::identity<rmcv::mat4>(), rmcv::identity<rmcv::mat4>() };
             NodeID nodeID = addNode(dummyNode);
@@ -849,6 +852,10 @@ namespace Falcor
         }
         mpMaterialTextureLoader->loadTexture(pMaterial, slot, path);
     }
+    void SceneBuilder::loadMaterialTexture(const StandardMaterialPLTWrapper::SharedPtr& mat, Material::TextureSlot slot, const std::filesystem::path& path)
+    {
+        mat->addTexture(slot, path);
+    }
 
     void SceneBuilder::waitForMaterialTextureLoading()
     {
@@ -899,6 +906,96 @@ namespace Falcor
         mSceneData.lights.push_back(pLight);
         FALCOR_ASSERT(mSceneData.lights.size() <= std::numeric_limits<uint32_t>::max());
         return LightID(mSceneData.lights.size() - 1);
+    }
+
+    inline SpectralProfile genSpectralProfile(const SampledSpectrum<float> &ss, bool computeICdf)
+    {
+        SpectralProfile sp;
+        sp.rgb = SpectrumUtils::toRGB_D65(ss);
+        sp.intensity = 1.f;
+
+        sp.minWavelength = std::max(ss.getWavelengthRange().x,SpectrumConstants::minWavelength);
+        sp.maxWavelength = std::min(ss.getWavelengthRange().y,SpectrumConstants::maxWavelength);
+        sp.bins = std::min<uint32_t>(SpectralProfile::kMaxBins,
+                                     uint32_t(ss.size() * (sp.maxWavelength-sp.minWavelength) / (ss.getWavelengthRange().y - ss.getWavelengthRange().x) + .5f));
+
+        std::memset(sp.pdf, 0, sizeof(sp.pdf));
+        std::memset(sp.icdf, 0, sizeof(sp.icdf));
+
+        if (sp.bins==0) return sp;
+
+        const float r = sp.bins>1 ? 1.f/float(sp.bins-1) : 1.f;
+
+        // PDF
+        float sum = .0f;
+        for (std::size_t i=0;i<sp.bins;++i)
+        {
+            sp.pdf[i] = ss.eval(lerp(sp.minWavelength, sp.maxWavelength, i*r));
+            sum += sp.pdf[i];
+        }
+
+        if (sum < FLT_EPSILON || !computeICdf) return sp;
+
+        for (std::size_t i=0;i<sp.bins;++i)
+            sp.pdf[i] /= sum;
+        sp.intensity = sum;
+
+        // Inverse CDF
+        float cdfa = .0f, cdfb=sp.pdf[0];
+        for (std::size_t pdfi=0,icdfi=0; icdfi<sp.bins; ++icdfi)
+        {
+            const float cdf = icdfi*r;
+            while (cdf>=cdfb && pdfi+1<sp.bins)
+            {
+                cdfa=cdfb;
+                ++pdfi;
+                cdfb+=sp.pdf[pdfi];
+            }
+
+            const float l = std::min(1.f, (cdf-cdfa) / (cdfb-cdfa));
+            sp.icdf[icdfi] = lerp((float)std::max<uint32_t>(1,pdfi)-1.f, (float)pdfi, l) * r;
+        }
+
+        return sp;
+    }
+
+    SpectralProfileID SceneBuilder::addSpectralProfile(SampledSpectrum<float> spectralProfile, bool computeICdf)
+    {
+        mSceneData.spectralProfiles.emplace_back(genSpectralProfile(std::move(spectralProfile), computeICdf));
+        return SpectralProfileID(mSceneData.spectralProfiles.size()-1);
+    }
+    SpectralProfileID SceneBuilder::addSpectralProfileRGB(float3 rgb)
+    {
+        return addSpectralProfile(SpectrumUtils::rgbToSpectrum<float>(rgb));
+    }
+
+    std::pair<SpectralProfileID, SpectralProfileID> SceneBuilder::addSpectralProfileFromMaterial(const std::string& name)
+    {
+        SampledSpectrum<float> n(1.f), k(.0f);
+        if (name != "none")
+        {
+            n = SampledSpectrum<float>{ PiecewiseLinearSpectrum::fromFile(std::filesystem::path(_PROJECT_DIR_) / "../Tables/ior/" / (name + ".eta.spd")) };
+            k = SampledSpectrum<float>{ PiecewiseLinearSpectrum::fromFile(std::filesystem::path(_PROJECT_DIR_) / "../Tables/ior" / (name + ".k.spd")) };
+        }
+
+        return std::make_pair(addSpectralProfile(n, false), addSpectralProfile(k, false));
+    }
+    SpectralProfileID SceneBuilder::addSpectralProfileForEmitterType(const std::string& name, float scale)
+    {
+        const auto dir = std::filesystem::path(_PROJECT_DIR_) / "../Tables/emission/";
+        for (auto const& file : std::filesystem::directory_iterator{ dir })
+        {
+            if (file.is_regular_file() && file.path().filename().string() == name + ".spd")
+            {
+                auto spectrum = PiecewiseLinearSpectrum::fromFile(file.path());
+                spectrum.scale(scale);
+                auto profile = SampledSpectrum<float>{ spectrum };
+                //profile.normalize();
+                return addSpectralProfile(std::move(profile));
+            }
+        }
+
+        throw RuntimeError("Emission profile '{}' not found.", name);
     }
 
     void SceneBuilder::loadLightProfile(const std::string& filename, bool normalize)
@@ -2821,6 +2918,13 @@ namespace Falcor
         return *spActivePythonSceneBuilder;
     }
 
+    FALCOR_SCRIPT_BINDING(SpectralProfile)
+    {
+        using namespace pybind11::literals;
+
+        pybind11::class_<SpectralProfile> spectralProfile(m, "SpectralProfile");
+    }
+
     FALCOR_SCRIPT_BINDING(SceneBuilder)
     {
         using namespace pybind11::literals;
@@ -2875,15 +2979,25 @@ namespace Falcor
         }, "path"_a, "dict"_a = pybind11::dict());
         sceneBuilder.def("addTriangleMesh", &SceneBuilder::addTriangleMesh, "triangleMesh"_a, "material"_a);
         sceneBuilder.def("addSDFGrid", &SceneBuilder::addSDFGrid, "sdfGrid"_a, "material"_a);
-        sceneBuilder.def("addMaterial", &SceneBuilder::addMaterial, "material"_a);
+        MaterialID (SceneBuilder::*ama)(const Material::SharedPtr&) = &SceneBuilder::addMaterial;
+        MaterialID (SceneBuilder::*amb)(const StandardMaterialPLTWrapper::SharedPtr&) = &SceneBuilder::addMaterial;
+        sceneBuilder.def("addMaterial", ama, "material"_a);
+        sceneBuilder.def("addMaterial", amb, "material"_a);
         sceneBuilder.def("replaceMaterial", &SceneBuilder::replaceMaterial, "material"_a, "replacement"_a);
         sceneBuilder.def("getMaterial", &SceneBuilder::getMaterial, "name"_a);
-        sceneBuilder.def("loadMaterialTexture", &SceneBuilder::loadMaterialTexture, "material"_a, "slot"_a, "path"_a);
+        void (SceneBuilder::*lmta)(const Material::SharedPtr&, Material::TextureSlot, const std::filesystem::path&) = &SceneBuilder::loadMaterialTexture;
+        void (SceneBuilder::*lmtb)(const StandardMaterialPLTWrapper::SharedPtr&, Material::TextureSlot, const std::filesystem::path&) = &SceneBuilder::loadMaterialTexture;
+        sceneBuilder.def("loadMaterialTexture", lmta, "material"_a, "slot"_a, "path"_a);
+        sceneBuilder.def("loadMaterialTexture", lmtb, "material"_a, "slot"_a, "path"_a);
         sceneBuilder.def("waitForMaterialTextureLoading", &SceneBuilder::waitForMaterialTextureLoading);
         sceneBuilder.def("addGridVolume", &SceneBuilder::addGridVolume, "gridVolume"_a, "nodeID"_a = NodeID::kInvalidID);
         sceneBuilder.def("addVolume", &SceneBuilder::addGridVolume, "gridVolume"_a, "nodeID"_a = NodeID::kInvalidID); // PYTHONDEPRECATED
         sceneBuilder.def("getGridVolume", &SceneBuilder::getGridVolume, "name"_a);
         sceneBuilder.def("getVolume", &SceneBuilder::getGridVolume, "name"_a); // PYTHONDEPRECATED
+        sceneBuilder.def("getSpectralProfile", &SceneBuilder::getSpectralProfile, "profile"_a);
+        sceneBuilder.def("addSpectralProfileRGB", &SceneBuilder::addSpectralProfileRGB, "rgb"_a);
+        sceneBuilder.def("addSpectralProfileFromMaterial", &SceneBuilder::addSpectralProfileFromMaterial, "materialName"_a);
+        sceneBuilder.def("addSpectralProfileForEmitterType", &SceneBuilder::addSpectralProfileForEmitterType, "emitterName"_a, "scale"_a);
         sceneBuilder.def("addLight", &SceneBuilder::addLight, "light"_a);
         sceneBuilder.def("getLight", &SceneBuilder::getLight, "name"_a);
         sceneBuilder.def("loadLightProfile", &SceneBuilder::loadLightProfile, "filename"_a, "normalize"_a = true);

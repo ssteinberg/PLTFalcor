@@ -34,6 +34,7 @@
 #include "VertexAttrib.slangh"
 #include "SceneTypes.slang"
 #include "Material/MaterialTextureLoader.h"
+#include "Material/StandardMaterial.h"
 
 #include "Core/Macros.h"
 #include "Core/API/VAO.h"
@@ -481,6 +482,7 @@ namespace Falcor
             \return The ID of the material in the scene.
         */
         MaterialID addMaterial(const Material::SharedPtr& pMaterial);
+        MaterialID addMaterial(const StandardMaterialPLTWrapper::SharedPtr& pMaterial) { return addMaterial(pMaterial->genMaterial(this)); }
 
         /** Replace a material.
             \param pMaterial The material to replace.
@@ -494,6 +496,7 @@ namespace Falcor
             \param[in] path Texture file path.
         */
         void loadMaterialTexture(const Material::SharedPtr& pMaterial, Material::TextureSlot slot, const std::filesystem::path& path);
+        void loadMaterialTexture(const StandardMaterialPLTWrapper::SharedPtr& mat, Material::TextureSlot slot, const std::filesystem::path& path);
 
         /** Wait until all material textures are loaded.
         */
@@ -537,6 +540,12 @@ namespace Falcor
             \return The light ID
         */
         LightID addLight(const Light::SharedPtr& pLight);
+
+        SpectralProfileID addSpectralProfile(SampledSpectrum<float> spectralProfile, bool computeICdf = true);
+        SpectralProfileID addSpectralProfileRGB(float3 rgb);
+        std::pair<SpectralProfileID, SpectralProfileID> addSpectralProfileFromMaterial(const std::string& name);
+        SpectralProfileID addSpectralProfileForEmitterType(const std::string& name, float scale = 1.f);
+        const auto& getSpectralProfile(SpectralProfileID idx) const { return mSceneData.spectralProfiles[idx.get()]; }
 
         /** DEMO21: Load global light profile.
         */

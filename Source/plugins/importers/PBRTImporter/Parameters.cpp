@@ -562,11 +562,11 @@ std::vector<Spectrum> ParameterDictionary::extractSpectrumArray(const ParsedPara
                     return Spectrum(*namedSpectrum);
 
                 auto spectrum = PiecewiseLinearSpectrum::fromFile(resolver(*s));
-                if (!spectrum)
+                if (spectrum.getBins() == 0)
                 {
                     throwError(param.loc, "Unable to read spectrum file '{}'.", *s);
                 }
-                return Spectrum(*spectrum);
+                return Spectrum(spectrum);
             }
         );
     }

@@ -28,6 +28,7 @@
 #include "Utils/Math/MathConstants.slangh"
 
 import Scene.Scene;
+import Utils.HWSS;
 import Utils.Sampling.SampleGeneratorInterface;
 import Rendering.Lights.EmissiveLightSamplerHelpers;
 import Rendering.Lights.EmissiveLightSamplerInterface;
@@ -58,7 +59,7 @@ struct EmissivePowerSampler : IEmissiveLightSampler
         \param[out] ls Light sample. Only valid if true is returned.
         \return True if a sample was generated, false otherwise.
     */
-    bool sampleLight<S : ISampleGenerator>(const float3 posW, const float3 normalW, const bool upperHemisphere, inout S sg, out TriangleLightSample ls)
+    bool sampleLight<S : ISampleGenerator>(const float3 posW, const float3 normalW, const bool upperHemisphere, inout S sg, const float wavelength, bool importanceSampleSpectrum, out TriangleLightSample ls)
     {
         if (gScene.lightCollection.isEmpty()) return false;
 
@@ -79,9 +80,7 @@ struct EmissivePowerSampler : IEmissiveLightSampler
         float triangleSelectionPdf = gScene.lightCollection.fluxData[triangleIndex].flux * _emissivePower.invWeightsSum;
 
         // Sample the triangle uniformly.
-        float2 u = sampleNext2D(sg);
-
-        if (!sampleTriangle(posW, triangleIndex, u, ls)) return false;
+        if (!sampleTriangle(posW, triangleIndex, sg, wavelength, importanceSampleSpectrum, ls)) return false;
 
         // The final probability density is the product of the sampling probabilities.
         ls.pdf *= triangleSelectionPdf;

@@ -79,13 +79,13 @@ namespace Falcor
         mpDefaultTextureSampler = Sampler::create(mpDevice.get(), desc);
     }
 
-    void MaterialSystem::renderUI(Gui::Widgets& widget)
+    void MaterialSystem::renderUI(Gui::Widgets& widget, const Scene *scene)
     {
         auto showMaterial = [&](uint32_t materialID, const std::string& label) {
             const auto& pMaterial = mMaterials[materialID];
             if (auto materialGroup = widget.group(label))
             {
-                if (pMaterial->renderUI(materialGroup)) uploadMaterial(materialID);
+                if (pMaterial->renderUI(materialGroup, scene)) uploadMaterial(materialID);
             }
         };
 

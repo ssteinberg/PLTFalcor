@@ -31,6 +31,7 @@
 #include "Utils/UI/Gui.h"
 #include "Utils/Color/ColorHelpers.slang"
 #include "Utils/Scripting/ScriptBindings.h"
+#include "Utils/Color/SpectrumUtils.h"
 
 namespace Falcor
 {
@@ -47,9 +48,10 @@ namespace Falcor
         }
     }
 
-    void Light::setIntensity(const float3& intensity)
+    void Light::setIntensity(SpectralProfileID spectrumId, SpectralProfile profile)
     {
-        mData.intensity = intensity;
+        mData.intensitySpectrumId = spectrumId.get();
+        intensitySpectrum = std::move(profile);
     }
 
     Light::Changes Light::beginFrame()
@@ -58,7 +60,7 @@ namespace Falcor
         if (mActiveChanged) mChanges |= Changes::Active;
         if (mPrevData.posW != mData.posW) mChanges |= Changes::Position;
         if (mPrevData.dirW != mData.dirW) mChanges |= Changes::Direction;
-        if (mPrevData.intensity != mData.intensity) mChanges |= Changes::Intensity;
+        if (mPrevData.intensitySpectrumId != mData.intensitySpectrumId) mChanges |= Changes::Intensity;
         if (mPrevData.openingAngle != mData.openingAngle) mChanges |= Changes::SurfaceArea;
         if (mPrevData.penumbraAngle != mData.penumbraAngle) mChanges |= Changes::SurfaceArea;
         if (mPrevData.cosSubtendedAngle != mData.cosSubtendedAngle) mChanges |= Changes::SurfaceArea;
@@ -78,83 +80,30 @@ namespace Falcor
     {
 #define check_offset(_a) FALCOR_ASSERT(var.getType()->getMemberOffset(#_a).getByteOffset() == offsetof(LightData, _a))
         check_offset(dirW);
-        check_offset(intensity);
         check_offset(penumbraAngle);
 #undef check_offset
 
         var.setBlob(mData);
     }
 
-    float3 Light::getColorForUI()
-    {
-        if ((mUiLightIntensityColor * mUiLightIntensityScale) != mData.intensity)
-        {
-            float mag = std::max(mData.intensity.x, std::max(mData.intensity.y, mData.intensity.z));
-            if (mag <= 1.f)
-            {
-                mUiLightIntensityColor = mData.intensity;
-                mUiLightIntensityScale = 1.0f;
-            }
-            else
-            {
-                mUiLightIntensityColor = mData.intensity / mag;
-                mUiLightIntensityScale = mag;
-            }
-        }
-
-        return mUiLightIntensityColor;
+    static constexpr std::size_t grapher_bins = 128;
+    static float grapher(void* ptr, std::int32_t idx) {
+        const auto& profile = *(const SpectralProfile*)ptr;
+        return profile.pdf[(std::size_t)clamp(idx / float(grapher_bins - 1) * profile.bins, .0f, profile.bins - .5f)];
     }
 
-    void Light::setColorFromUI(const float3& uiColor)
-    {
-        mUiLightIntensityColor = uiColor;
-        setIntensity(mUiLightIntensityColor * mUiLightIntensityScale);
-    }
-
-    float Light::getIntensityForUI()
-    {
-        if ((mUiLightIntensityColor * mUiLightIntensityScale) != mData.intensity)
-        {
-            float mag = std::max(mData.intensity.x, std::max(mData.intensity.y, mData.intensity.z));
-            if (mag <= 1.f)
-            {
-                mUiLightIntensityColor = mData.intensity;
-                mUiLightIntensityScale = 1.0f;
-            }
-            else
-            {
-                mUiLightIntensityColor = mData.intensity / mag;
-                mUiLightIntensityScale = mag;
-            }
-        }
-
-        return mUiLightIntensityScale;
-    }
-
-    void Light::setIntensityFromUI(float intensity)
-    {
-        mUiLightIntensityScale = intensity;
-        setIntensity(mUiLightIntensityColor * mUiLightIntensityScale);
-    }
-
-    void Light::renderUI(Gui::Widgets& widget)
+    void Light::renderUI(Gui::Widgets& widget, const Scene *scene)
     {
         bool active = isActive();
-        if (widget.checkbox("Active", active)) setActive(active);
+        if (widget.checkbox("active", active)) setActive(active);
 
-        if (mHasAnimation) widget.checkbox("Animated", mIsAnimated);
+        if (mHasAnimation) widget.checkbox("animated", mIsAnimated);
 
-        float3 color = getColorForUI();
-        if (widget.rgbColor("Color", color))
-        {
-            setColorFromUI(color);
-        }
-
-        float intensity = getIntensityForUI();
-        if (widget.var("Intensity", intensity))
-        {
-            setIntensityFromUI(intensity);
-        }
+        float3 intensity = intensitySpectrum.rgb;
+        intensity /= std::max(1.f,std::max(intensity.r, std::max(intensity.g, intensity.b)));
+        const auto& profile = scene->getSpectralProfile(mData.intensitySpectrumId);
+        widget.graph("emission spectrum", grapher, (void*)&profile, grapher_bins, 0);
+        widget.rgbColor("", intensity);
     }
 
     Light::Light(const std::string& name, LightType type)
@@ -173,6 +122,8 @@ namespace Falcor
     PointLight::PointLight(const std::string& name)
         : Light(name, LightType::Point)
     {
+        setLightArea(10000.f);  // 0.1mm^2
+        setEmissionSolidAngle(1e-6f);
         mPrevData = mData;
     }
 
@@ -193,20 +144,23 @@ namespace Falcor
 
     float PointLight::getPower() const
     {
-        return luminance(mData.intensity) * 4.f * (float)M_PI;
+        return intensitySpectrum.intensity * 4.f * (float)M_PI;
     }
 
-    void PointLight::renderUI(Gui::Widgets& widget)
+    void PointLight::renderUI(Gui::Widgets& widget, const Scene *scene)
     {
-        Light::renderUI(widget);
+        Light::renderUI(widget, scene);
 
-        widget.var("World Position", mData.posW, -FLT_MAX, FLT_MAX);
-        widget.direction("Direction", mData.dirW);
+        widget.var("world Position", mData.posW, -FLT_MAX, FLT_MAX);
+        widget.direction("direction", mData.dirW);
 
         float openingAngle = getOpeningAngle();
-        if (widget.var("Opening Angle", openingAngle, 0.f, (float)M_PI)) setOpeningAngle(openingAngle);
+        if (widget.var("opening Angle", openingAngle, 0.f, (float)M_PI)) setOpeningAngle(openingAngle);
         float penumbraAngle = getPenumbraAngle();
-        if (widget.var("Penumbra Width", penumbraAngle, 0.f, (float)M_PI)) setPenumbraAngle(penumbraAngle);
+        if (widget.var("penumbra Width", penumbraAngle, 0.f, (float)M_PI)) setPenumbraAngle(penumbraAngle);
+
+        float A = getLightArea();
+        if (widget.var("light area (mm^2)",A,.0f)) setLightArea(A);
     }
 
     void PointLight::setOpeningAngle(float openingAngle)
@@ -236,6 +190,16 @@ namespace Falcor
         setWorldDirection(fwd);
     }
 
+    void PointLight::setLightArea(float A)
+    {
+        mData.surfaceArea = A;
+    }
+
+    void PointLight::setEmissionSolidAngle(float Omega)
+    {
+        mData.cosSubtendedAngle = sqrt(1.f-Omega/4.f/M_PI);
+    }
+
     // DirectionalLight
 
     DirectionalLight::DirectionalLight(const std::string& name)
@@ -249,14 +213,22 @@ namespace Falcor
         return SharedPtr(new DirectionalLight(name));
     }
 
-    void DirectionalLight::renderUI(Gui::Widgets& widget)
+    void DirectionalLight::setSourceSolidAngle(float Omega)
     {
-        Light::renderUI(widget);
+        mData.cosSubtendedAngle = sqrt(1.f-Omega/4.f/M_PI);
+    }
 
-        if (widget.direction("Direction", mData.dirW))
+    void DirectionalLight::renderUI(Gui::Widgets& widget, const Scene *scene)
+    {
+        Light::renderUI(widget, scene);
+
+        if (widget.direction("direction", mData.dirW))
         {
             setWorldDirection(mData.dirW);
         }
+
+        float Omega = getSourceSolidAngle();
+        if (widget.var("solid angle",Omega,.0f,2*(float)M_PI,1e-6f)) setSourceSolidAngle(Omega);
     }
 
     void DirectionalLight::setWorldDirection(const float3& dir)
@@ -286,32 +258,27 @@ namespace Falcor
         : Light(name, LightType::Distant)
     {
         mData.dirW = float3(0.f, -1.f, 0.f);
-        setAngle(0.5f * 0.53f * (float)M_PI / 180.f);   // Approximate sun half-angle
         update();
         mPrevData = mData;
     }
 
-    void DistantLight::renderUI(Gui::Widgets& widget)
+    void DistantLight::setSourceSolidAngle(float Omega)
     {
-        Light::renderUI(widget);
+        mData.cosSubtendedAngle = sqrt(1.f-Omega/4.f/M_PI);
+        update();
+    }
 
-        if (widget.direction("Direction", mData.dirW))
+    void DistantLight::renderUI(Gui::Widgets& widget, const Scene *scene)
+    {
+        Light::renderUI(widget, scene);
+
+        if (widget.direction("direction", mData.dirW))
         {
             setWorldDirection(mData.dirW);
         }
 
-        if (widget.var("Half-angle", mAngle, 0.f, (float)M_PI_2))
-        {
-            setAngle(mAngle);
-        }
-        widget.tooltip("Half-angle subtended by the light, in radians.");
-    }
-
-    void DistantLight::setAngle(float angle)
-    {
-        mAngle = glm::clamp(angle, 0.f, (float)M_PI_2);
-
-        mData.cosSubtendedAngle = std::cos(mAngle);
+        float Omega = getSourceSolidAngle();
+        if (widget.var("solid angle",Omega,.0f,2*(float)M_PI,1e-6f)) setSourceSolidAngle(Omega);
     }
 
     void DistantLight::setWorldDirection(const float3& dir)
@@ -359,6 +326,8 @@ namespace Falcor
         mData.bitangent = float3(0, 1, 0);
         mData.surfaceArea = 4.0f;
 
+        setEmissionSolidAngle(1e-6f);
+
         mScaling = float3(1, 1, 1);
         update();
         mPrevData = mData;
@@ -366,7 +335,7 @@ namespace Falcor
 
     float AnalyticAreaLight::getPower() const
     {
-        return luminance(mData.intensity) * (float)M_PI * mData.surfaceArea;
+        return intensitySpectrum.intensity * (float)M_PI * mData.surfaceArea;
     }
 
     void AnalyticAreaLight::update()
@@ -374,6 +343,11 @@ namespace Falcor
         // Update matrix
         mData.transMat = mTransformMatrix * rmcv::scale(rmcv::mat4(), mScaling);
         mData.transMatIT = rmcv::inverse(rmcv::transpose(mData.transMat));
+    }
+
+    void AnalyticAreaLight::setEmissionSolidAngle(float Omega)
+    {
+        mData.cosSubtendedAngle = sqrt(1.f-Omega/4.f/M_PI);
     }
 
     // RectLight
@@ -438,7 +412,7 @@ namespace Falcor
         light.def_property("name", &Light::getName, &Light::setName);
         light.def_property("active", &Light::isActive, &Light::setActive);
         light.def_property("animated", &Light::isAnimated, &Light::setIsAnimated);
-        light.def_property("intensity", &Light::getIntensity, &Light::setIntensity);
+        light.def("setIntensity", &Light::setIntensity, "pofileid"_a, "profile"_a);
 
         pybind11::class_<PointLight, Light, PointLight::SharedPtr> pointLight(m, "PointLight");
         pointLight.def(pybind11::init(&PointLight::create), "name"_a = "");
@@ -450,11 +424,12 @@ namespace Falcor
         pybind11::class_<DirectionalLight, Light, DirectionalLight::SharedPtr> directionalLight(m, "DirectionalLight");
         directionalLight.def(pybind11::init(&DirectionalLight::create), "name"_a = "");
         directionalLight.def_property("direction", &DirectionalLight::getWorldDirection, &DirectionalLight::setWorldDirection);
+        directionalLight.def_property("sourceSolidAngle", &DirectionalLight::getSourceSolidAngle, &DirectionalLight::setSourceSolidAngle);
 
         pybind11::class_<DistantLight, Light, DistantLight::SharedPtr> distantLight(m, "DistantLight");
         distantLight.def(pybind11::init(&DistantLight::create), "name"_a = "");
         distantLight.def_property("direction", &DistantLight::getWorldDirection, &DistantLight::setWorldDirection);
-        distantLight.def_property("angle", &DistantLight::getAngle, &DistantLight::setAngle);
+        distantLight.def_property("sourceSolidAngle", &DistantLight::getSourceSolidAngle, &DistantLight::setSourceSolidAngle);
 
         pybind11::class_<AnalyticAreaLight, Light, AnalyticAreaLight::SharedPtr> analyticLight(m, "AnalyticAreaLight");
 

@@ -39,8 +39,11 @@ __exported import Scene.Volume.GridVolume;
 __exported import Scene.SDFs.SDFGrid;
 
 import Utils.Attributes;
+import Utils.HWSS;
 import Utils.Math.MathHelpers;
 import Utils.Math.MatrixUtils;
+import Utils.Sampling.SampleGenerator;
+import Utils.Color.SpectrumSampler;
 import Utils.Geometry.GeometryHelpers;
 import Utils.SlangUtils;
 import Scene.SDFs.SDFVoxelCommon;
@@ -57,10 +60,6 @@ import Rendering.Materials.TexLODHelpers;
 */
 struct Scene
 {
-    // DEMO21
-    static bool kUseLightProfile = SCENE_USE_LIGHT_PROFILE;
-    static float kDiffuseAlbedoMultiplier = SCENE_DIFFUSE_ALBEDO_MULTIPLIER;
-
     // Raytracing
     [root] RaytracingAccelerationStructure rtAccel;
 
@@ -111,6 +110,9 @@ struct Scene
     LightProfile lightProfile;
     EnvMap envMap;
     Camera camera;
+
+    // spectral profiles
+    StructuredBuffer<SpectralProfile> spectralProfiles;
 
     // Grid volumes
     uint gridVolumeCount;
@@ -238,6 +240,90 @@ struct Scene
     uint getLightCount()
     {
         return lightCount;
+    }
+
+    float3 evalSpectrumRGB(uint32_t profileId)
+    {
+        if (profileId == BasicMaterialData.no_spectral_profile)
+            return .0f;
+        return spectralProfiles[profileId].rgb;
+    }
+    float evalSpectrum(uint32_t profileId, float lambda)
+    {
+        if (profileId == BasicMaterialData.no_spectral_profile)
+            return .0f;
+
+        let sp = spectralProfiles[profileId];
+        const uint bins = sp.bins;
+        const float minl = sp.minWavelength;
+        const float maxl = sp.maxWavelength;
+
+        const float x = (lambda - minl) / (maxl - minl) * (bins - 1.0f);
+        const float i = floor(x);
+        const float w = x - i;
+
+        return lambda < minl || lambda > maxl ?
+            .0f :
+            sp.intensity * lerp(sp.pdf[max(0,min(int(bins)-1,int(i)))],
+                                sp.pdf[max(0,min(int(bins)-1,int(i+1)))],
+                                w);
+    }
+    hwss_t evalSpectrum(uint32_t profileId, hwss_t lambdas)
+    {
+        if (profileId == BasicMaterialData.no_spectral_profile)
+            return .0f;
+
+        let sp = spectralProfiles[profileId];
+        const uint bins = sp.bins;
+        const hwss_t minl = hwss_t(sp.minWavelength);
+        const hwss_t maxl = hwss_t(sp.maxWavelength);
+
+        let zeros = lambdas < minl || lambdas > maxl;
+
+        let x = (lambdas - minl) / (maxl - minl) * (bins - 1.0f);
+        let i = floor(x);
+
+        let w = x - i;
+
+        hwss_t a,b;
+        for (int j=0;j<hwss_samples;++j) {
+            a[j] = sp.pdf[max(0,min(int(bins)-1,int(i[j])))];
+            b[j] = sp.pdf[max(0,min(int(bins)-1,int(i[j]+1)))];
+        }
+        return zeros ? hwss_t(.0f) : sp.intensity * lerp(a, b, w);
+    }
+
+    hwss_t sampleSpectrum<S: ISampleGenerator>(uint32_t profileId, float heroWavelength, inout S sg, bool importanceSample, out hwss_t sampledWavelengths)
+    {
+        if (profileId == BasicMaterialData.no_spectral_profile)
+            return .0f;
+
+        hwss_t ret;
+
+        if (importanceSample) {
+            // Samples 3 wavelengths, in addition to the a priori chosen hero wavelength
+            let sp = spectralProfiles[profileId];
+            sampledWavelengths.x = heroWavelength;
+            ret.x = evalSpectrum(profileId, heroWavelength);
+
+            const float3 x = sp.bins*sampleNext3D(sg);
+            const uint3 idxs = uint3(x);
+            for (int j=1;j<hwss_samples;++j) {
+                const uint idx = idxs[j-1];
+                const float cdf = lerp(idx<sp.bins ? sp.icdf[idx] : 1.f,
+                                       idx+1<sp.bins ? sp.icdf[idx+1] : 1.f,
+                                       frac(x[j-1]));
+                sampledWavelengths[j] = lerp(sp.minWavelength,
+                                            sp.maxWavelength,
+                                            cdf);
+                ret[j] = sp.intensity/(float)sp.bins;
+            }
+        } else {
+            sampledWavelengths = SpectrumSampler.hwssWavelengths(heroWavelength);
+            ret = evalSpectrum(profileId, sampledWavelengths);
+        }
+
+        return ret;
     }
 
     LightData getLight(uint lightIndex)

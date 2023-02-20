@@ -65,10 +65,10 @@ namespace Falcor
         updateDeltaSpecularFlag();
     }
 
-    bool BasicMaterial::renderUI(Gui::Widgets& widget)
+    bool BasicMaterial::renderUI(Gui::Widgets& widget, const Scene *scene)
     {
         // Render the base class UI first.
-        bool changed = Material::renderUI(widget);
+        bool changed = Material::renderUI(widget, scene);
 
         // We're re-using the material's update flags here to track changes.
         // Cache the previous flag so we can restore it before returning.
@@ -210,6 +210,8 @@ namespace Falcor
             updateTextureHandle(pOwner, TextureSlot::Transmission, mData.texTransmission);
             updateTextureHandle(pOwner, TextureSlot::Normal, mData.texNormalMap);
             updateTextureHandle(pOwner, TextureSlot::Displacement, mData.texDisplacementMap);
+            updateTextureHandle(pOwner, TextureSlot::Data1, mData.texData1);
+            updateTextureHandle(pOwner, TextureSlot::Data2, mData.texData2);
 
             // Update default sampler.
             updateDefaultTextureSamplerID(pOwner, mpDefaultSampler);
@@ -267,6 +269,28 @@ namespace Falcor
         if (mData.IoR != (float16_t)IoR)
         {
             mData.IoR = (float16_t)IoR;
+            markUpdates(UpdateFlags::DataChanged);
+        }
+    }
+
+    void BasicMaterial::setEmissionSpectralProfile(bool emissive, SpectralProfileID id)
+    {
+        if (!emissive)
+            id = SpectralProfileID(BasicMaterialData::no_spectral_profile);
+        if (mData.emissionSpectralId != id.get())
+        {
+            mData.emissionSpectralId = id.get();
+            markUpdates(UpdateFlags::DataChanged);
+            updateEmissiveFlag();
+        }
+    }
+
+    void BasicMaterial::setIORSpectralProfile(std::pair<SpectralProfileID, SpectralProfileID> ior)
+    {
+        if (mData.iorNSpectralId != ior.first.get() || mData.iorKSpectralId != ior.second.get())
+        {
+            mData.iorNSpectralId = ior.first.get();
+            mData.iorKSpectralId = ior.second.get();
             markUpdates(UpdateFlags::DataChanged);
         }
     }
@@ -388,16 +412,6 @@ namespace Falcor
             }
             break;
         }
-        case TextureSlot::Emissive:
-        {
-            if (texInfo.isConstant(channelMask))
-            {
-                clearTexture(Material::TextureSlot::Emissive);
-                setEmissiveColor(texInfo.value.rgb);
-                stats.texturesRemoved[(size_t)slot]++;
-            }
-            break;
-        }
         case TextureSlot::Normal:
         {
             // Determine which channels of the normal map are used.
@@ -436,6 +450,26 @@ namespace Falcor
         case TextureSlot::Displacement:
         {
             // Nothing to do here, displacement texture is prepared when calling prepareDisplacementMap().
+            break;
+        }
+        case TextureSlot::Data1:
+        {
+            if (texInfo.isConstant(channelMask))
+            {
+                clearTexture(Material::TextureSlot::Data1);
+                setData1(texInfo.value);
+                stats.texturesRemoved[(size_t)slot]++;
+            }
+            break;
+        }
+        case TextureSlot::Data2:
+        {
+            if (texInfo.isConstant(channelMask))
+            {
+                clearTexture(Material::TextureSlot::Data2);
+                setData2(texInfo.value);
+                stats.texturesRemoved[(size_t)slot]++;
+            }
             break;
         }
         default:
@@ -511,6 +545,23 @@ namespace Falcor
             markUpdates(UpdateFlags::DataChanged);
             updateAlphaMode();
             updateDeltaSpecularFlag();
+        }
+    }
+
+    void BasicMaterial::setData1(const float4& data1)
+    {
+        if (mData.data1 != (float16_t4)data1)
+        {
+            mData.data1 = (float16_t4)data1;
+            markUpdates(UpdateFlags::DataChanged);
+        }
+    }
+    void BasicMaterial::setData2(const float4& data2)
+    {
+        if (mData.data2 != (float16_t4)data2)
+        {
+            mData.data2 = (float16_t4)data2;
+            markUpdates(UpdateFlags::DataChanged);
         }
     }
 
@@ -599,8 +650,11 @@ namespace Falcor
         compare_field(displacementOffset);
         compare_field(baseColor);
         compare_field(specular);
-        compare_field(emissive);
-        compare_field(emissiveFactor);
+        compare_field(data1);
+        compare_field(data2);
+        compare_field(emissionSpectralId);
+        compare_field(iorNSpectralId);
+        compare_field(iorKSpectralId);
         compare_field(IoR);
         compare_field(diffuseTransmission);
         compare_field(specularTransmission);
@@ -654,11 +708,7 @@ namespace Falcor
 
     void BasicMaterial::updateEmissiveFlag()
     {
-        bool isEmissive = false;
-        if (mData.emissiveFactor > 0.f)
-        {
-            isEmissive = hasTextureSlotData(Material::TextureSlot::Emissive) || mData.emissive != float3(0.f);
-        }
+        const bool isEmissive = mData.isEmissive();
         if (mHeader.isEmissive() != isEmissive)
         {
             mHeader.setEmissive(isEmissive);
@@ -694,6 +744,8 @@ namespace Falcor
         material.def_property("volumeScattering", &BasicMaterial::getVolumeScattering, &BasicMaterial::setVolumeScattering);
         material.def_property("volumeAnisotropy", &BasicMaterial::getVolumeAnisotropy, &BasicMaterial::setVolumeAnisotropy);
         material.def_property("indexOfRefraction", &BasicMaterial::getIndexOfRefraction, &BasicMaterial::setIndexOfRefraction);
+        material.def("setEmissiveProfile", &BasicMaterial::setEmissionSpectralProfile);
+        material.def("setIORSpectralProfile", &BasicMaterial::setIORSpectralProfile);
         material.def_property("displacementScale", &BasicMaterial::getDisplacementScale, &BasicMaterial::setDisplacementScale);
         material.def_property("displacementOffset", &BasicMaterial::getDisplacementOffset, &BasicMaterial::setDisplacementOffset);
     }

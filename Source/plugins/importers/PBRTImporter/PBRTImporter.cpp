@@ -75,15 +75,14 @@
 #include "Scene/Importer.h"
 #include "Scene/Material/Material.h"
 #include "Scene/Material/StandardMaterial.h"
-#include "Scene/Material/RGLMaterial.h"
-#include "Scene/Material/HairMaterial.h"
-#include "Scene/Material/PBRT/PBRTDiffuseMaterial.h"
-#include "Scene/Material/PBRT/PBRTCoatedDiffuseMaterial.h"
-#include "Scene/Material/PBRT/PBRTConductorMaterial.h"
-#include "Scene/Material/PBRT/PBRTCoatedConductorMaterial.h"
-#include "Scene/Material/PBRT/PBRTDielectricMaterial.h"
-#include "Scene/Material/PBRT/PBRTDiffuseTransmissionMaterial.h"
 #include "Scene/Curves/CurveTessellation.h"
+
+#include "Rendering/Materials/PLT/PLTDiffuseMaterial.h"
+#include "Rendering/Materials/PLT/PLTConductorMaterial.h"
+#include "Rendering/Materials/PLT/PLTDielectricMaterial.h"
+#include "Rendering/Materials/PLT/PLTThinDielectricMaterial.h"
+#include "Rendering/Materials/PLT/PLTCoatedConductorMaterial.h"
+#include "Rendering/Materials/PLT/PLTCoatedOpaqueDielectricMaterial.h"
 
 #include <unordered_map>
 
@@ -686,7 +685,8 @@ Light createLight(BuilderContext& ctx, const LightSceneEntity& entity)
         float3 direction = normalize(rmcv::mat3(entity.transform) * (to - from));
 
         auto pDirectionalLight = Falcor::DirectionalLight::create("DirectionalLight");
-        pDirectionalLight->setIntensity(intensity);
+        // TODO: handle spectrum
+        //pDirectionalLight->setIntensity(intensity);
         pDirectionalLight->setWorldDirection(direction);
         light.pLight = pDirectionalLight;
     }
@@ -877,7 +877,7 @@ SpectrumTexture createSpectrumTexture(BuilderContext& ctx, const TextureSceneEnt
     {
         // Parameters:
         // Spectrum value
-        spectrumTexture.texture = params.getSpectrum("value", Spectrum(1.f), ctx.resolver);
+        spectrumTexture.texture = params.getSpectrum("value", Spectrum(PiecewiseLinearSpectrum(1.f)), ctx.resolver);
     }
     else if (type == "scale")
     {
@@ -994,7 +994,7 @@ Falcor::Material::SharedPtr createMaterial(BuilderContext& ctx, const MaterialSc
 
         if (ctx.usePBRTMaterials && !isAreaLight)
         {
-            auto pPBRTMaterial = PBRTDiffuseMaterial::create(ctx.builder.getDevice(), entity.name);
+            auto pPBRTMaterial = PLTDiffuseMaterial::create(ctx.builder.getDevice(), entity.name);
             assignSpectrumTexture(
                 reflectance, [&](float3 rgb) { pPBRTMaterial->setBaseColor(float4(rgb, 1.f)); },
                 [&](Falcor::Texture::SharedPtr pTexture) { pPBRTMaterial->setBaseColorTexture(pTexture); }
@@ -1030,8 +1030,8 @@ Falcor::Material::SharedPtr createMaterial(BuilderContext& ctx, const MaterialSc
         {
             float2 roughness = getRoughness(ctx, entity);
 
-            auto pPBRTMaterial = PBRTCoatedDiffuseMaterial::create(ctx.builder.getDevice(), entity.name);
-            pPBRTMaterial->setRoughness(roughness);
+            auto pPBRTMaterial = PLTCoatedOpaqueDielectricMaterial::create(ctx.builder.getDevice(), entity.name);
+            pPBRTMaterial->setRoughness(roughness.x);
             assignSpectrumTexture(
                 reflectance, [&](float3 rgb) { pPBRTMaterial->setBaseColor(float4(rgb, 1.f)); },
                 [&](Falcor::Texture::SharedPtr pTexture) { pPBRTMaterial->setBaseColorTexture(pTexture); }
@@ -1067,10 +1067,11 @@ Falcor::Material::SharedPtr createMaterial(BuilderContext& ctx, const MaterialSc
             auto [eta, k] = getConductorEtaK(ctx, entity);
             float2 roughness = getRoughness(ctx, entity);
 
-            auto pPBRTMaterial = PBRTConductorMaterial::create(ctx.builder.getDevice(), entity.name);
+            // TODO: conductor material
+            auto pPBRTMaterial = PLTConductorMaterial::create(ctx.builder.getDevice(), entity.name);
             pPBRTMaterial->setBaseColor(float4(eta, 1.f));
-            pPBRTMaterial->setTransmissionColor(k);
-            pPBRTMaterial->setRoughness(roughness);
+            // pPBRTMaterial->setTransmissionColor(k);
+            pPBRTMaterial->setRoughness(roughness.x);
             pPBRTMaterial->setDoubleSided(true);
             pMaterial = pPBRTMaterial;
         }
@@ -1107,11 +1108,11 @@ Falcor::Material::SharedPtr createMaterial(BuilderContext& ctx, const MaterialSc
             auto [eta, k] = getConductorEtaK(ctx, entity, "conductor.reflectance", "conductor.eta", "conductor.k");
             float2 conductorRoughness = getRoughness(ctx, entity, "conductor.roughness", "conductor.uroughness", "conductor.vroughness");
 
-            auto pPBRTMaterial = PBRTCoatedConductorMaterial::create(ctx.builder.getDevice(), entity.name);
+            auto pPBRTMaterial = PLTCoatedConductorMaterial::create(ctx.builder.getDevice(), entity.name);
             pPBRTMaterial->setBaseColor(float4(eta, 1.f));
-            pPBRTMaterial->setTransmissionColor(k);
-            pPBRTMaterial->setSpecularParams(float4(interfaceRoughness, conductorRoughness));
-            pPBRTMaterial->setIndexOfRefraction(interfaceEta);
+            // pPBRTMaterial->setTransmissionColor(k);
+            // pPBRTMaterial->setSpecularParams(float4(interfaceRoughness, conductorRoughness));
+            pPBRTMaterial->setCoatIndexOfRefraction(interfaceEta);
             pPBRTMaterial->setDoubleSided(true);
             pMaterial = pPBRTMaterial;
         }
@@ -1146,8 +1147,8 @@ Falcor::Material::SharedPtr createMaterial(BuilderContext& ctx, const MaterialSc
             float2 roughness = getRoughness(ctx, entity);
             float eta = getScalarEta(ctx, entity);
 
-            auto pPBRTMaterial = PBRTDielectricMaterial::create(ctx.builder.getDevice(), entity.name);
-            pPBRTMaterial->setRoughness(roughness);
+            auto pPBRTMaterial = PLTDielectricMaterial::create(ctx.builder.getDevice(), entity.name);
+            pPBRTMaterial->setRoughness(roughness.x);
             pPBRTMaterial->setIndexOfRefraction(eta);
             pMaterial = pPBRTMaterial;
         }
@@ -1173,12 +1174,8 @@ Falcor::Material::SharedPtr createMaterial(BuilderContext& ctx, const MaterialSc
 
         float eta = getScalarEta(ctx, entity);
 
-        auto pStandardMaterial = StandardMaterial::create(ctx.builder.getDevice(), entity.name);
-        pStandardMaterial->setMetallic(0.f);
-        pStandardMaterial->setRoughness(0.f);
+        auto pStandardMaterial = PLTThinDielectricMaterial::create(ctx.builder.getDevice(), entity.name);
         pStandardMaterial->setIndexOfRefraction(eta);
-        pStandardMaterial->setSpecularTransmission(1.f);
-        pStandardMaterial->setThinSurface(true);
         pMaterial = pStandardMaterial;
     }
     else if (type == "diffusetransmission")
@@ -1193,7 +1190,8 @@ Falcor::Material::SharedPtr createMaterial(BuilderContext& ctx, const MaterialSc
 
         if (ctx.usePBRTMaterials && !isAreaLight)
         {
-            auto pPBRTMaterial = PBRTDiffuseTransmissionMaterial::create(ctx.builder.getDevice(), entity.name);
+            auto pPBRTMaterial = PLTDielectricMaterial::create(ctx.builder.getDevice(), entity.name);
+            pPBRTMaterial->setRoughness(.6f);
             assignSpectrumTexture(
                 reflectance, [&](float3 rgb) { pPBRTMaterial->setBaseColor(float4(rgb, 1.f)); },
                 [&](Falcor::Texture::SharedPtr pTexture) { pPBRTMaterial->setBaseColorTexture(pTexture); }
@@ -1224,84 +1222,11 @@ Falcor::Material::SharedPtr createMaterial(BuilderContext& ctx, const MaterialSc
     }
     else if (type == "hair")
     {
-        // Parameters:
-        // SpectrumTexture sigma_a, SpectrumTexture reflectance, SpectrumTexture color,
-        // FloatTexture eumelanin, FloatTexture pheomelanin
-        // FloatTexture eta, FloatTexture beta_m, FloatTexture beta_n, FloatTexture alpha
-
-        auto sigma_a = getSpectrumTextureOrNull(ctx, params, "sigma_a", SpectrumType::Unbounded);
-        auto reflectance = getSpectrumTextureOrNull(ctx, params, "reflectance", SpectrumType::Albedo);
-        if (!reflectance)
-        {
-            reflectance = getSpectrumTextureOrNull(ctx, params, "color", SpectrumType::Albedo);
-        }
-        auto eumelanin = getFloatTextureOrNull(ctx, params, "eumelanin");
-        auto pheomelanin = getFloatTextureOrNull(ctx, params, "pheomelanin");
-
-        float eta = getFloatTextureConstantOnly(ctx, params, "eta", 1.55f);
-        float beta_m = getFloatTextureConstantOnly(ctx, params, "beta_m", 0.3f);
-        float beta_n = getFloatTextureConstantOnly(ctx, params, "beta_n", 0.3f);
-        float alpha = getFloatTextureConstantOnly(ctx, params, "alpha", 2.f);
-
-        HairMaterial::SharedPtr pHairMaterial = HairMaterial::create(ctx.builder.getDevice(), entity.name);
-        float3 baseColor = HairMaterial::colorFromSigmaA(HairMaterial::sigmaAFromConcentration(0.5f, 0.2f), beta_n);
-        pHairMaterial->setBaseColor(float4(baseColor, 1.f));
-        pHairMaterial->setSpecularParams(float4(beta_m, beta_n, alpha, 0.f));
-        pHairMaterial->setIndexOfRefraction(eta);
-
-        if (sigma_a)
-        {
-            if (reflectance)
-                logWarning(entity.loc, "Ignoring 'reflectance' parameter since 'sigma_a' was provided.");
-            if (eumelanin)
-                logWarning(entity.loc, "Ignoring 'eumelanin' parameter since 'sigma_a' was provided.");
-            if (pheomelanin)
-                logWarning(entity.loc, "Ignoring 'pheomelanin' parameter since 'sigma_a' was provided.");
-
-            assignSpectrumTexture(
-                *sigma_a,
-                [&](float3 constant) { pHairMaterial->setBaseColor(float4(HairMaterial::colorFromSigmaA(constant, beta_n), 1.f)); },
-                [&](Falcor::Texture::SharedPtr pTexture)
-                { logWarning(entity.loc, "Non-constant 'sigma_a' is currently not supported. Using default color instead."); }
-            );
-        }
-        else if (reflectance)
-        {
-            if (eumelanin)
-                logWarning(entity.loc, "Ignoring 'eumelanin' parameter since 'reflectance' was provided.");
-            if (pheomelanin)
-                logWarning(entity.loc, "Ignoring 'pheomelanin' parameter since 'reflectance' was provided.");
-
-            assignSpectrumTexture(
-                *reflectance, [&](float3 constant) { pHairMaterial->setBaseColor(float4(constant, 1.f)); },
-                [&](Falcor::Texture::SharedPtr pTexture) { pHairMaterial->setBaseColorTexture(pTexture); }
-            );
-        }
-        else if (eumelanin || pheomelanin)
-        {
-            float eumelaninValue = getFloatTextureConstantOnly(ctx, params, "eumelanin", 0.3f);
-            float pheomelaninValue = getFloatTextureConstantOnly(ctx, params, "pheomelanin", 0.3f);
-            float3 baseColor =
-                HairMaterial::colorFromSigmaA(HairMaterial::sigmaAFromConcentration(eumelaninValue, pheomelaninValue), beta_n);
-            pHairMaterial->setBaseColor(float4(baseColor, 1.f));
-        }
-
-        pMaterial = pHairMaterial;
+        warnUnsupported();
     }
     else if (type == "measured")
     {
-        // Parameters:
-        // String filename
-        auto path = ctx.resolver(params.getString("filename", ""));
-        try
-        {
-            auto pRGLMaterial = RGLMaterial::create(ctx.builder.getDevice(), entity.name, path);
-            pMaterial = pRGLMaterial;
-        }
-        catch (const RuntimeError& e)
-        {
-            logWarning(entity.loc, "Failed to load 'measured' material: {}", e.what());
-        }
+        warnUnsupported();
     }
     else if (type == "subsurface")
     {
@@ -1379,8 +1304,9 @@ void createAreaLight(BuilderContext& ctx, const SceneEntity& entity, const Falco
 
         if (auto pStandardMaterial = std::dynamic_pointer_cast<Falcor::StandardMaterial>(pMaterial))
         {
-            pStandardMaterial->setEmissiveColor(L);
-            pStandardMaterial->setEmissiveFactor(1.f);
+            // TODO: Handle
+            //pStandardMaterial->setEmissiveColor(L);
+            //pStandardMaterial->setEmissiveFactor(1.f);
         }
         else
         {

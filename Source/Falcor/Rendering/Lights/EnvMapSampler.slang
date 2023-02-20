@@ -36,6 +36,10 @@
 #include "Utils/Math/MathConstants.slangh"
 import Scene.Scene;
 import Utils.Math.MathHelpers;
+import Utils.HWSS;
+import Utils.Color.SpectrumSampler;
+import Utils.Color.SpectrumUtils;
+import Rendering.PLT;
 
 /** Struct returned from the sampling functions.
 */
@@ -43,7 +47,8 @@ struct EnvMapSample
 {
     float3 dir;         ///< Sampled direction towards the light in world space.
     float pdf;          ///< Probability density function for the sampled direction with respect to solid angle.
-    float3 Le;          ///< Emitted radiance.
+    hwss_t Le;          ///< Emitted radiance.
+    hwss_t wavelengths; ///< Sampled wavelengths
 };
 
 /** Struct for sampling and evaluating an environment map.
@@ -65,10 +70,10 @@ struct EnvMapSampler
 
     /** Importance sampling of the environment map.
     */
-    bool sample(const float2 rnd, out EnvMapSample result)
+    bool sample(const float2 rnd, const float primaryWavelength, out EnvMapSample result)
     {
-        float2 p = rnd;     // Random sample in [0,1)^2.
-        uint2 pos = 0;      // Top-left texel pos of current 2x2 region.
+        float2 p = rnd;  // Random sample in [0,1)^2.
+        uint2 pos = 0;   // Top-left texel pos of current 2x2 region.
 
         // Iterate over mips of 2x2...NxN resolution.
         for (int mip = importanceBaseMip - 1; mip >= 0; mip--)
@@ -136,7 +141,9 @@ struct EnvMapSampler
 
         result.dir = gScene.envMap.toWorld(dir);
         result.pdf = pdf * M_1_4PI;
-        result.Le = gScene.envMap.eval(result.dir);
+        // TODO: importance sample wavelengths
+        result.wavelengths = SpectrumSampler.hwssWavelengths(primaryWavelength);
+        result.Le = SpectrumUtils.rgbToSpectrum(gScene.envMap.eval(result.dir), result.wavelengths);
 
         return true;
     }

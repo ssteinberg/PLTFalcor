@@ -244,6 +244,11 @@ namespace Falcor
         void togglePersistentProjectionMatrix(bool persistent);
         void togglePersistentViewMatrix(bool persistent);
 
+        void setPolarizationIntensity(float polarizer);
+        float getPolarizationIntensity() const { return mData.polarizer; }
+        void setPolarizationAngle(float theta);
+        float getPolarizationAngle() const { return mData.polarizerTheta; }
+
         /** Check if an object should be culled
             \param[in] box Bounding box of the object to check
         */

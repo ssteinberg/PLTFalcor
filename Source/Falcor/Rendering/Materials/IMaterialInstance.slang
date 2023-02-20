@@ -1,5 +1,5 @@
 /***************************************************************************
- # Copyright (c) 2015-23, NVIDIA CORPORATION. All rights reserved.
+ # Copyright (c) 2015-22, NVIDIA CORPORATION. All rights reserved.
  #
  # Redistribution and use in source and binary forms, with or without
  # modification, are permitted provided that the following conditions
@@ -25,79 +25,71 @@
  # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  **************************************************************************/
-__exported import Rendering.Materials.LobeType;
-__exported import Utils.Sampling.SampleGeneratorInterface;
-__exported import Rendering.Materials.BxDF; // For StandardBSDFData
 #include "Utils/HostDeviceShared.slangh" // For bit packing macros
 
+__exported import Scene.Material.BasicMaterialData;
 __exported import Scene.ShadingData;
-__exported import Scene.Material.ShadingUtils;
-__exported import Rendering.Materials.IBSDF; // For kMinCosTheta
+
+__exported import Rendering.PLT;
+__exported import Rendering.Utils.DifferentialShadingGeometry;
+__exported import Rendering.Materials.BSDFSample;
 __exported import Rendering.Materials.LobeType;
+
+__exported import Utils.HWSS;
 __exported import Utils.Sampling.SampleGeneratorInterface;
 
-/** Hints passed in when creating a material instance.
-*/
-enum MaterialInstanceHints : uint
-{
-    None = 0,
-};
 
-/** Describes a BSDF sample.
-*/
-struct BSDFSample
-{
-    float3  wo;             ///< Sampled direction in world space (normalized).
-    float   pdf;            ///< pdf with respect to solid angle for the sampled direction (wo).
-    float3  weight;         ///< Sample weight f(wi, wo) * dot(wo, n) / pdf(wo).
-    uint    lobeType;       ///< Sampled lobeType. This is a combination of LobeType flags (see LobeType.slang).
 
-    bool isLobe(LobeType type)
-    {
-        return (lobeType & uint(type)) != 0;
-    }
-};
+// Surface Q cutoff for manifold sampling
+static const float QcutoffForMS = .15f;
+
+
 
 /** Describes BSDF properties.
 
     These properties may be useful as input to denoisers and other perceptual techniques.
     The BSDF implementations are expected to provide a best fit approximation.
-    The values are an average of the respective BSDFs if a material instance holds multiple.
 */
 struct BSDFProperties
 {
-    float3  emission;                       ///< Radiance emitted in the incident direction (wi).
-    float   roughness;                      ///< Surface roughness on a perceptually linear scale, where 0.0 = perfectly smooth and 1.0 = maximum roughness.
-    float3  guideNormal;                    ///< Representative shading normal in world space that includes effects of normal mapping. Useful as guide for denoisers.
-    uint    flags;                          ///< Flags storing additional properties.
+    uint32_t emissionSpectralId = BasicMaterialData.no_spectral_profile;
+    float3 emissionRGB = .0f;
+    float3 albedo = .0f;
+    float roughness = .0f;
 
-    // Approximate directional-hemispherical reflectance/transmittance of the BSDF (black-sky albedo).
-    // The exact values are given by the integrals of the BSDF over wo given an incident direction wi.
-    // The terms are separated into diffuse and non-diffuse components. Due to energy conservation, the sum is expected to be <= 1.0.
-    float3  diffuseReflectionAlbedo;        ///< Directional-hemispherical diffuse reflectance. This is the ratio of total energy diffusely reflected to the energy incident along wi.
-    float3  diffuseTransmissionAlbedo;      ///< Directional-hemispherical diffuse transmittance. This is the ratio of total energy diffusely transmitted to the energy incident along wi.
-    float3  specularReflectionAlbedo;       ///< Directional-hemispherical specular reflectance. This is the ratio of total energy non-diffusely reflected to the energy incident along wi.
-    float3  specularTransmissionAlbedo;     ///< Directional-hemispherical specular transmittance. This is the ratio of total energy non-diffusely transmitted to the energy incident along wi.
-
-    // Approximate specular reflectance. This is the color of specular reflection.
-    // The diffuse reflectance is approximated as a Lambertian given by the diffuse albedo above.
-    float3  specularReflectance;            ///< Specular reflectance at normal incidence (F0). This is in the range [0,1].
+    uint flags = 0; ///< Flags storing additional properties.
 
     enum Flags : uint
     {
         IsTransmissive = 0x1,
+        IsEmissive = 0x2,
+        CanManifoldWalkReflective = 0x4,
+        CanManifoldWalkTransmissive = 0x8,
     };
 
     property isTransmissive : bool
     {
         get { return (flags & (uint)Flags::IsTransmissive) != 0; }
     }
+    property isEmissive : bool
+    {
+        get { return (flags & (uint)Flags::IsEmissive) != 0; }
+    }
+    property canManifoldWalkReflective : bool
+    {
+        get { return (flags & (uint)Flags::CanManifoldWalkReflective) != 0; }
+    }
+    property canManifoldWalkTransmissive : bool
+    {
+        get { return (flags & (uint)Flags::CanManifoldWalkTransmissive) != 0; }
+    }
 };
 
 
-#ifndef FALCOR_MATERIAL_INSTANCE_SIZE
-#error Missing FALCOR_MATERIAL_INSTANCE_SIZE
-#endif
+enum BSDFEvaluationFlags : uint {
+    none = 0,
+};
+
 
 /** Interface for a bidirection scattering distribution function (BSDF).
 
@@ -120,9 +112,6 @@ struct BSDFProperties
      - The outgoing direction (wo) is sampled.
      - The foreshortening term with respect to the sampled direction is always included.
 
-     All calculations are done in world coordinate frame. MaterialInstances will convert
-     data into local coordinate frame before passing it to the respective BSDFs.
-
     Note:
      - The [anyValueSize(n)] attribute specifies the maximum size in bytes an implementation type
        to IMaterialInstance can be. Slang compiler will check the implementation types and emits an error
@@ -130,37 +119,56 @@ struct BSDFProperties
      - The maximum size can be increased if needed, but it should be kept as small as possible
        to reduce register pressure in case the compiler fails to optimize.
 */
-[anyValueSize(FALCOR_MATERIAL_INSTANCE_SIZE)]
+[anyValueSize(64)]
 interface IMaterialInstance
 {
-    /** Evaluates the material instance.
-        \param[in] wi Incident direction.
-        \param[in] wo Outgoing direction.
-        \param[in,out] sg Sample generator.
-        \return Returns f(wi, wo) * dot(wo, n).
+    /** Evaluates the BSDF.
+        \param[in] sd Shading data.
+        \param[in] wo Outgoing direction (to eye).
+        \param[in] lobe Scattering lobe to evaluate.
+        \param[in,out] beam PLT beam to mutate.
     */
-    // Minimum cos(theta) for the incident and outgoing vectors.
-    // Some BSDF functions are not robust for cos(theta) == 0.0,
-    // so using a small epsilon for consistency.
-    // TODO: Move into IBSDF if possible
-    float3 eval<S : ISampleGenerator>(const ShadingData sd, const float3 wo, inout S sg);
+    void eval(const ShadingData sd, const float3 wo, const uint lobe, inout PLTBeam beam, const BSDFEvaluationFlags flags = (BSDFEvaluationFlags)0);
 
-    /** Samples the material instance.
+    /** Computed partial the derivatives of wo, given the partial derivatives of wi. Samples the delta lobe(s) only.
+        \param[in] wi Incident direction and its partial derivatives.
+        \param[in] dsg Differential geometry at shading point.
+        \param[in] lobe Scattering lobe to evaluate.
+        \param[in] wavelength wavlength.
+        \return wo and its partial derivatives
+    */
+    float3kpdv partialDerivatives(const float3pdv wi, const DifferentialShadingGeometry dsg, const uint lobe, float wavelength);
+
+    /** Samples the BSDF.
         \param[in] sd Shading data.
         \param[in,out] sg Sample generator.
         \param[out] result Generated sample. Only valid if true is returned.
-        \param[in] useImportanceSampling Hint to use importance sampling, else default to reference implementation if available.
+        \param[in] wavelength wavlength.
+        \param[in] lobeMask Mask of lobe types to sample from.
+        \param[in] woHint When non-zero, implementation may sample a lobe as close to woHint as possible.
         \return True if a sample was generated, false otherwise.
     */
-    bool sample<S : ISampleGenerator>(const ShadingData sd, inout S sg, out BSDFSample result, bool useImportanceSampling = true);
+    bool sample<S : ISampleGenerator>(const ShadingData sd, inout S sg, out BSDFSample result, const float wavelength, const uint lobeMask = (uint)LobeType::All, const float3 woHint = .0f);
 
-    /** Evaluates the directional pdf for sampling the given direction.
+    /** Evaluates the directional pdf for sampling the given directions, with wavelength held constant.
+        Only applies to non-delta lobes
         \param[in] sd Shading data.
-        \param[in] wo Outgoing direction.
-        \param[in] useImportanceSampling Hint to use importance sampling, else default to reference implementation if available.
-        \return PDF with respect to solid angle for sampling direction wo (0 for delta events).
+        \param[in] toLight Direction to source.
+        \param[in] wavelength wavlength.
+        \return PDF with respect to solid angle for sampling direction wo.
     */
-    float evalPdf(const ShadingData sd, const float3 wo, bool useImportanceSampling = true);
+    float pdf(const ShadingData sd, const float3 toLight, const float wavelength);
+
+    /** Evaluates the spectral pdf for sampling, with the directions held constant.
+        (may be unnormalized)
+        \param[in] sd Shading data.
+        \param[in] wo Outgoing direction (to eye).
+        \param[in] lobe Scattering lobe to evaluate.
+        \param[in] beam PLT beam.
+        \param[in] wavelengths wavlengths.
+        \return PDF for sampling wavelength.
+    */
+    hwss_t lambdaPdf(const ShadingData sd, const float3 wo, const uint lobe, const PLTBeam beam, const hwss_t wavelengths);
 
     /** Return BSDF properties.
         \param[in] sd Shading data.
@@ -172,6 +180,5 @@ interface IMaterialInstance
         \param[in] sd Shading data.
         \return A combination of LobeType flags (see LobeType.slang).
     */
-    uint getLobeTypes(const ShadingData sd);
-
+    uint getLobes(const ShadingData sd);
 }

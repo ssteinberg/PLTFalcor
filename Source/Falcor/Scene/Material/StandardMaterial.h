@@ -79,7 +79,7 @@ namespace Falcor
         /** Render the UI.
             \return True if the material was modified.
         */
-        bool renderUI(Gui::Widgets& widget) override;
+        bool renderUI(Gui::Widgets& widget, const Scene *scene) override;
 
         Program::ShaderModuleList getShaderModules() const override;
         Program::TypeConformanceList getTypeConformances() const override;
@@ -108,21 +108,6 @@ namespace Falcor
         */
         float getMetallic() const { return getShadingModel() == ShadingModel::MetalRough ? (float)mData.specular[2] : 0.f; }
 
-        /** Set the emissive color.
-        */
-        void setEmissiveColor(const float3& color) override;
-
-        /** Set the emissive factor.
-        */
-        void setEmissiveFactor(float factor);
-
-        /** Get the emissive color.
-        */
-        float3 getEmissiveColor() const { return mData.emissive; }
-
-        /** Get the emissive factor.
-        */
-        float getEmissiveFactor() const { return mData.emissiveFactor; }
 
         // DEMO21: The mesh will use the global IES profile (LightProfile) to modulate its emission
         void setLightProfileEnabled( bool enabled )
@@ -138,4 +123,38 @@ namespace Falcor
         void renderSpecularUI(Gui::Widgets& widget) override;
         void setShadingModel(ShadingModel model);
     };
+
+
+    // Fancy guesswork to produce PLT materials from StandardMaterial input
+    class SceneBuilder;
+    class FALCOR_API StandardMaterialPLTWrapper : public std::enable_shared_from_this<StandardMaterialPLTWrapper> {
+        std::unordered_map<Material::TextureSlot, std::filesystem::path> textures;
+
+        StandardMaterialPLTWrapper(std::string name) : name(std::move(name)) {}
+
+    public:
+        using SharedPtr = std::shared_ptr<StandardMaterialPLTWrapper>;
+
+        std::string name;
+        float indexOfRefraction{ 1.5f };
+        float specularTransmission{ .0f };
+        float4 baseColor{ 1.f };
+        float4 specularParams{ .0f };       // unused, roughness, """metallic""", unused
+        float3 volumeScattering{ .0f };     // unused
+        float3 volumeAbsorption{ .0f };     // unused
+        float3 transmissionColor{ 1.f };
+        float alphaThreshold{ .5f };
+        bool doubleSided{ false };
+        bool isDiffuse{ false };            // Forces PLTDiffuse
+        std::string metalName{};
+
+        Transform textureTransform;
+
+        static SharedPtr create(std::string name);
+
+        void addTexture(Material::TextureSlot slot, const std::filesystem::path& path) { textures[slot] = path; }
+
+        Material::SharedPtr genMaterial(SceneBuilder *builder) const;
+    };
+
 }

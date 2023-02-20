@@ -192,6 +192,115 @@ namespace Falcor
         return create(vertices, indices);
     }
 
+    TriangleMesh::SharedPtr TriangleMesh::createCylinder(float radius, float height, uint32_t segments)
+    {
+        VertexList vertices;
+        IndexList indices;
+
+        // Create vertices.
+        for (uint32_t v = 0; v <= segments; ++v)
+        for (uint32_t u = 0; u <= 1; ++u)
+        {
+            float2 uv = float2(u / float(1.f), v / float(segments));
+            float theta = uv.y * 2.f * (float)M_PI;
+            float3 n = { std::sin(theta), .0f, std::cos(theta) };
+            float3 p = radius*n + float3{ .0f, (uv.x-.5f) * height, .0f };
+            vertices.emplace_back(Vertex{ p, n, uv });
+        }
+        // Caps
+        for (uint32_t u = 0; u <= 1; ++u)
+        for (uint32_t v = 0; v <= segments; ++v)
+        {
+            float theta = v / float(segments) * 2.f * (float)M_PI;
+            float3 n = float3{ .0f, u==0 ? -1.f : 1.f, .0f };
+            float3 p = radius*float3{ std::sin(theta), .0f, std::cos(theta) } + n * height/2.f;
+            float2 uv = float2{ p.x+radius,p.z+radius } / (2.f*radius);
+            vertices.emplace_back(Vertex{ p, n, uv });
+        }
+
+        // Create indices.
+        for (uint32_t v = 0; v < segments; ++v)
+        {
+            indices.emplace_back(2*v);
+            indices.emplace_back(2*v+1);
+            indices.emplace_back(2*v+2);
+
+            indices.emplace_back(2*v+2);
+            indices.emplace_back(2*v+1);
+            indices.emplace_back(2*v+3);
+        }
+
+        for (uint32_t u=2*(segments+1),v=3*(segments+1)-1;u<3*(segments+1)-1;++u,--v)
+        {
+            indices.emplace_back(u);
+            indices.emplace_back(v);
+            indices.emplace_back(u+1);
+
+            indices.emplace_back(v);
+            indices.emplace_back(v-1);
+            indices.emplace_back(u+1);
+        }
+        for (uint32_t u=3*(segments+1),v=4*(segments+1)-1;u<4*(segments+1)-1;++u,--v)
+        {
+            indices.emplace_back(u);
+            indices.emplace_back(u+1);
+            indices.emplace_back(v);
+
+            indices.emplace_back(v);
+            indices.emplace_back(u+1);
+            indices.emplace_back(v-1);
+        }
+
+        return create(vertices, indices);
+
+    }
+
+    TriangleMesh::SharedPtr TriangleMesh::createPrism(float a, float b, float h)
+    {
+        b = std::max(a/2.f,b);
+        float l = std::sqrt(std::max(.0f,-a*a/4.f+b*b));
+        float3 normala{0.f, 0.f, 1.f};
+        float3 normalb = normalize(float3{-b,0,-a});
+        float3 normalc = normalize(float3{ b,0,-a});
+
+        VertexList vertices{
+            {float3{ -a, -h,  l }/2.f, normala, { 0.f, 0.f }},
+            {float3{  a, -h,  l }/2.f, normala, { 1.f, 0.f }},
+            {float3{ -a, h,   l }/2.f, normala, { 0.f, 1.f }},
+            {float3{  a, h,   l }/2.f, normala, { 1.f, 1.f }},
+            {float3{ -a, -h,  l }/2.f, normalb, { 0.f, 0.f }},
+            {float3{  0, -h, -l }/2.f, normalb, { 1.f, 0.f }},
+            {float3{ -a, h,   l }/2.f, normalb, { 0.f, 1.f }},
+            {float3{  0, h,  -l }/2.f, normalb, { 1.f, 1.f }},
+            {float3{  a, -h,  l }/2.f, normalc, { 0.f, 0.f }},
+            {float3{  0, -h, -l }/2.f, normalc, { 1.f, 0.f }},
+            {float3{  a, h,   l }/2.f, normalc, { 0.f, 1.f }},
+            {float3{  0, h,  -l }/2.f, normalc, { 1.f, 1.f }},
+            // top
+            {float3{ -a, h,   l }/2.f, { .0f,1.f,.0f }, { 0.f, 1.f }},
+            {float3{  a, h,   l }/2.f, { .0f,1.f,.0f }, { 1.f, 1.f }},
+            {float3{  0, h,  -l }/2.f, { .0f,1.f,.0f }, { 1.f, 1.f }},
+            // bottom
+            {float3{ -a, -h,  l }/2.f, { .0f,-1.f,.0f }, { 0.f, 1.f }},
+            {float3{  a, -h,  l }/2.f, { .0f,-1.f,.0f }, { 1.f, 1.f }},
+            {float3{  0, -h, -l }/2.f, { .0f,-1.f,.0f }, { 1.f, 1.f }},
+        };
+
+        IndexList indices{
+            2, 1, 0,
+            1, 2, 3,
+            6, 5, 4,
+            5, 6, 7,
+            10, 9, 8,
+            9, 10, 11,
+            12, 13, 14,
+            15, 16, 17,
+        };
+
+        return create(vertices, indices);
+
+    }
+
     TriangleMesh::SharedPtr TriangleMesh::createFromFile(const std::filesystem::path& path, bool smoothNormals)
     {
         std::filesystem::path fullPath;
@@ -301,6 +410,23 @@ namespace Falcor
         if (flippedWinding) mFrontFaceCW = !mFrontFaceCW;
     }
 
+     void TriangleMesh::flipNormals()
+     {
+         for (auto& vertex : mVertices)
+         {
+             vertex.normal = -vertex.normal;
+         }
+         mFrontFaceCW = !mFrontFaceCW;
+     }
+
+     void TriangleMesh::flipTexCoords()
+     {
+         for (auto& vertex : mVertices)
+         {
+             vertex.texCoord.y = 1.f - vertex.texCoord.y;
+         }
+     }
+
     TriangleMesh::TriangleMesh()
     {}
 
@@ -326,6 +452,8 @@ namespace Falcor
         triangleMesh.def_static("createDisk", &TriangleMesh::createDisk, "radius"_a = 1.f, "segments"_a = 32);
         triangleMesh.def_static("createCube", &TriangleMesh::createCube, "size"_a = float3(1.f));
         triangleMesh.def_static("createSphere", &TriangleMesh::createSphere, "radius"_a = 1.f, "segmentsU"_a = 32, "segmentsV"_a = 32);
+        triangleMesh.def_static("createCylinder", &TriangleMesh::createCylinder, "radius"_a = 1.f, "height"_a = .5f, "segments"_a = 32);
+        triangleMesh.def_static("createPrism", &TriangleMesh::createPrism, "a"_a = .5f, "b"_a = .5f, "h"_a = .5f);
         triangleMesh.def_static("createFromFile", &TriangleMesh::createFromFile, "path"_a, "smoothNormals"_a = false);
 
         pybind11::class_<TriangleMesh::Vertex> vertex(triangleMesh, "Vertex");
