@@ -32,7 +32,8 @@ Other PBRT, Falcor and mitsuba scenes can be loaded (PBRT and mitsuba importers 
 Builds upon the **Falcor** real-time rendering framework.
 For more information and additional resources, see the [Falcor GitHub page](https://github.com/NVIDIAGameWorks/Falcor).
 
-![](docs/images/image1.png)
+![](docs/images/image3.png)
+![](docs/images/image2.png)
 ![](docs/images/image7.png)
 ![](docs/images/image5.png)
 ![](docs/images/image6.png)
