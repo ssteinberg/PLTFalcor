@@ -349,7 +349,6 @@ void NEE(inout PLTSolve solveData,
             if (currentVertexMS) {
                 evalCurrentVertex = false;
                 MISBsdfPdf = bounce.lastNonDeltaPdf;
-                ls.beam.scale(1.f / sqr(M_PI));
             }
         }
 

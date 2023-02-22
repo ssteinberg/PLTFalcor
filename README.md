@@ -54,11 +54,7 @@ To use the OptiX denoiser, OptiX and Cuda should be installed. See below.
 - A GPU which supports DirectX Raytracing, such as the NVIDIA Titan V or GeForce RTX
 - NVIDIA driver 466.11 or newer
 
-Optional:
-- Windows 10 Graphics Tools. To run DirectX 12 applications with the debug layer enabled, you must install this. There are two ways to install it:
-    - Click the Windows button and type `Optional Features`, in the window that opens click `Add a feature` and select `Graphics Tools`.
-    - Download an offline package from [here](https://docs.microsoft.com/en-us/windows-hardware/test/hlk/windows-hardware-lab-kit#supplemental-content-for-graphics-media-and-mean-time-between-failures-mtbf-tests). Choose a ZIP file that matches the OS version you are using (not the SDK version used for building Falcor). The ZIP includes a document which explains how to install the graphics tools.
-- NVAPI, CUDA, OptiX (see below)
+** **Note:** There is a bug with some NVIDIA drivers (confirmed with 528.49) where manifold sampling (when enabled) fails for the first few hundred or thousand frames, and kicks in afterwards. This is under investigation.
 
 ## Building
 Falcor uses the [CMake](https://cmake.org) build system. Additional information on how to use Falcor with CMake is available in the [CMake](docs/development/cmake.md) development documetation page.
