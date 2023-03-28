@@ -2,7 +2,7 @@
 # Real-time physical light transport (PLT) framework
 
 This repository demonstrates interactive wave-optical rendering, and implements core concepts from the PLT series of publications. See relevant papers:
-- [A Generalized Ray Formulation For Wave-Optics Rendering]()
+- [A Generalized Ray Formulation For Wave-Optics Rendering](https://ssteinberg.xyz/2023/03/27/rtplt/)
 - [Towards Practical Physical-Optics Rendering](https://ssteinberg.xyz/2022/04/03/practical_plt/)
 - [Physical Light-Matter Interaction in Hermite-Gauss Space](https://ssteinberg.xyz/2021/07/31/physical_light_matter_interaction_hg_space/)
 - [A Generic Framework for Physical Light Transport](https://ssteinberg.xyz/2021/04/26/generic_physical_light_transport_framework/)
