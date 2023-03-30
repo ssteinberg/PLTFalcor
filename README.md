@@ -26,8 +26,8 @@ All conductors use tabulated spectral refractive-indices, and all light sources 
 
 Manifold sampling (MS) is implemented. MS enables exploring NEE connections through dielectrics, as well as NEE with a delta lobe. This is used to render the dispersive lobes of a diffraction grating, as demonstrated in the images below.
 
-A few sample scenes with diffractive materials can be found [here]().
-Other PBRT, Falcor and mitsuba scenes can be loaded (PBRT and mitsuba importers with limited support), and materials are automatically converted to PLT materials.
+A sample scene with diffractive materials can be found [here](https://ssteinberg.xyz/2023/03/27/rtplt/).
+Other PBRT, Falcor and mitsuba scenes can be loaded (PBRT and mitsuba importers with limited support), some materials are automatically converted to PLT materials, though probably some manual tuning will be required.
 
 Builds upon the **Falcor** real-time rendering framework.
 For more information and additional resources, see the [Falcor GitHub page](https://github.com/NVIDIAGameWorks/Falcor).
