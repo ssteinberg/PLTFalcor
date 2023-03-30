@@ -38,7 +38,7 @@ For more information and additional resources, see the [Falcor GitHub page](http
 ![](docs/images/image5.png)
 ![](docs/images/image6.png)
 
-Additional rendered images and videos available [here]().
+Additional rendered images and videos available [here](https://ssteinberg.xyz/2023/03/27/rtplt/).
 
 
 ## Usage
